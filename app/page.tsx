@@ -81,6 +81,23 @@ export default function Home() {
           📸 오답 문제 올리기
         </Link>
 
+        <Link
+          href="/box"
+          style={{
+            display: "block",
+            marginTop: "12px",
+            padding: "16px",
+            background: "#eef2ff",
+            color: "#4338ca",
+            borderRadius: "14px",
+            fontSize: "16px",
+            fontWeight: 800,
+            textDecoration: "none",
+          }}
+        >
+          📋 학생 오답함 보기
+        </Link>
+
         <div
           style={{
             marginTop: "28px",
