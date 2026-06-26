@@ -1,26 +1,37 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import AppBar from "@/components/AppBar";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-
-type Student = { id: string; name: string; grade: string | null; created_at: string };
+import { DBProblem, DBStudent, summarize } from "@/lib/data";
+import { PageHeader, Avatar } from "@/components/ui";
+import { IconPlus, IconSearch, IconChevronRight } from "@/components/icons";
 
 export default function StudentsPage() {
+  const router = useRouter();
+  const [students, setStudents] = useState<DBStudent[]>([]);
+  const [problems, setProblems] = useState<DBProblem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [error, setError] = useState("");
+
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+
+  const [q, setQ] = useState("");
+  const [gradeFilter, setGradeFilter] = useState("전체");
 
   async function load() {
-    const { data, error } = await supabase.from("students").select("*").order("name");
-    if (error) setError(error.message);
-    else setStudents(data ?? []);
+    const [{ data: studs, error: e1 }, { data: probs }] = await Promise.all([
+      supabase.from("students").select("*").order("name"),
+      supabase.from("wrong_problems").select("*"),
+    ]);
+    if (e1) setError(e1.message);
+    setStudents((studs as DBStudent[]) ?? []);
+    setProblems((probs as DBProblem[]) ?? []);
     setLoading(false);
   }
-
   useEffect(() => {
     load();
   }, []);
@@ -29,94 +40,109 @@ export default function StudentsPage() {
     setError("");
     if (!name.trim()) return;
     setBusy(true);
-    const { error } = await supabase.from("students").insert({
-      name: name.trim(),
-      grade: grade.trim() || null,
-    });
+    const { error } = await supabase.from("students").insert({ name: name.trim(), grade: grade.trim() || null });
     setBusy(false);
     if (error) return setError(error.message);
     setName("");
     setGrade("");
+    setAdding(false);
     load();
   }
 
-  async function removeStudent(s: Student) {
-    if (!confirm(`"${s.name}" 학생을 명단에서 지울까요?\n(이미 등록된 오답 기록은 그대로 남아요)`)) return;
+  async function removeStudent(s: DBStudent) {
+    if (!confirm(`"${s.name}" 학생을 명단에서 지울까요?\n(등록된 오답 기록은 그대로 남아요)`)) return;
     const { error } = await supabase.from("students").delete().eq("id", s.id);
     if (error) return setError(error.message);
     load();
   }
 
+  const grades = ["전체", ...Array.from(new Set(students.map((s) => s.grade).filter(Boolean) as string[]))];
+  const filtered = students.filter(
+    (s) => (gradeFilter === "전체" || s.grade === gradeFilter) && (q === "" || s.name.includes(q)),
+  );
+  const statOf = (n: string) => summarize(problems.filter((p) => p.student_name === n));
+
   return (
     <>
-      <AppBar />
-      <main className="container">
-        <h1 className="page-title">학생 관리</h1>
-        <p className="page-sub">학생을 등록해두면, 오답 등록 때 이름을 골라 쓸 수 있어요.</p>
-
-        {error && <div className="alert alert-err">{error}</div>}
-
-        {/* 학생 추가 */}
-        <div className="card">
-          <span className="label">새 학생 추가</span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              className="input"
-              style={{ flex: 2 }}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="이름 (예: 김민준)"
-              onKeyDown={(e) => e.key === "Enter" && addStudent()}
-            />
-            <input
-              className="input"
-              style={{ flex: 1 }}
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-              placeholder="학년/반"
-              onKeyDown={(e) => e.key === "Enter" && addStudent()}
-            />
-          </div>
-          <button className="btn btn-primary btn-block" style={{ marginTop: 12 }} onClick={addStudent} disabled={busy}>
-            {busy ? "추가 중…" : "+ 학생 추가"}
+      <PageHeader
+        eyebrow="학생 관리"
+        title="학생 명단"
+        sub="학생을 등록해두면 오답 등록 때 이름을 골라 쓸 수 있어요."
+        actions={
+          <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
+            <IconPlus size={14} />학생 추가
           </button>
-        </div>
+        }
+      />
 
-        {/* 명단 */}
-        <div style={{ marginTop: 18 }}>
-          <span className="label">등록된 학생 ({students.length}명)</span>
-          {loading && <div className="alert alert-info">불러오는 중…</div>}
-          {!loading && students.length === 0 && (
-            <div className="card" style={{ textAlign: "center", color: "var(--muted)" }}>
-              아직 등록된 학생이 없어요. 위에서 추가해 보세요.
-            </div>
-          )}
-          {students.map((s) => (
-            <div
-              key={s.id}
-              className="card"
-              style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px" }}
-            >
-              <span style={{ fontSize: 16, fontWeight: 800 }}>{s.name}</span>
-              {s.grade && <span style={{ fontSize: 13, color: "var(--muted)" }}>{s.grade}</span>}
-              <button
-                onClick={() => removeStudent(s)}
-                style={{
-                  marginLeft: "auto",
-                  background: "none",
-                  border: "none",
-                  color: "var(--danger)",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                삭제
-              </button>
-            </div>
+      {error && <div className="alert alert-err">{error}</div>}
+
+      {adding && (
+        <div className="card" style={{ padding: 18, marginBottom: 16 }}>
+          <div className="row" style={{ gap: 8 }}>
+            <input className="input" style={{ flex: 2 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="이름 (예: 김민준)" onKeyDown={(e) => e.key === "Enter" && addStudent()} autoFocus />
+            <input className="input" style={{ flex: 1 }} value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="학년 (예: 중3)" onKeyDown={(e) => e.key === "Enter" && addStudent()} />
+            <button className="btn btn-primary" onClick={addStudent} disabled={busy}>{busy ? "추가 중…" : "추가"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* 검색 / 필터 */}
+      <div className="row" style={{ gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <div className="row" style={{ flex: 1, minWidth: 200, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "0 12px", gap: 6 }}>
+          <IconSearch size={16} className="muted" />
+          <input className="input" style={{ border: 0, padding: "10px 4px", fontSize: 15 }} placeholder="이름으로 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+          {grades.map((g) => (
+            <button key={g} className={`btn btn-sm ${gradeFilter === g ? "btn-primary" : "btn-secondary"}`} onClick={() => setGradeFilter(g)}>{g}</button>
           ))}
         </div>
-      </main>
+      </div>
+
+      {loading ? (
+        <div className="alert alert-info">불러오는 중…</div>
+      ) : students.length === 0 ? (
+        <div className="empty card flat"><h4>아직 등록된 학생이 없어요</h4>위 「학생 추가」로 명단을 만들어 보세요.</div>
+      ) : (
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>학생</th>
+                <th style={{ width: 80 }}>학년</th>
+                <th style={{ width: 90 }}>등록 오답</th>
+                <th style={{ width: "26%" }}>진행률</th>
+                <th style={{ width: 70 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((s) => {
+                const sm = statOf(s.name);
+                return (
+                  <tr key={s.id} className="row-link" onClick={() => router.push(`/admin/student/${encodeURIComponent(s.name)}`)}>
+                    <td><span className="name"><Avatar name={s.name} />{s.name}</span></td>
+                    <td className="muted">{s.grade || "—"}</td>
+                    <td><span className="num">{sm.total}</span></td>
+                    <td>
+                      <div className="row" style={{ gap: 10 }}>
+                        <div className="bar" style={{ flex: 1, maxWidth: 120 }}><div className="fill" style={{ width: sm.progress + "%" }} /></div>
+                        <span className="num" style={{ fontSize: 13 }}>{sm.progress}%</span>
+                      </div>
+                    </td>
+                    <td>
+                      <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger-ink)" }} onClick={(e) => { e.stopPropagation(); removeStudent(s); }}>삭제</button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={5}><div className="empty" style={{ padding: 28 }}><h4>해당하는 학생이 없습니다</h4></div></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }

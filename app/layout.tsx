@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Shell from "@/components/Shell";
 
 export const metadata: Metadata = {
   title: "오답 반복학습",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        <Shell>{children}</Shell>
+      </body>
     </html>
   );
 }

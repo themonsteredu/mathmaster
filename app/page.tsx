@@ -1,129 +1,131 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { DBProblem, statusKey, problemTitle, problemTopic, summarize } from "@/lib/data";
+import { PageHeader, StatCard, SectionH, StatusChip, ProgressDots } from "@/components/ui";
+import { IconPlus, IconChevronRight, IllustEmpty } from "@/components/icons";
 
-type Stats = { studying: number; done: number; students: number };
+function md(iso: string) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
 
-export default function Home() {
-  const [conn, setConn] = useState<"확인중" | "성공" | "실패">("확인중");
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [errorMsg, setErrorMsg] = useState("");
+export default function StudentHome() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [problems, setProblems] = useState<DBProblem[]>([]);
+  const [who, setWho] = useState("전체");
 
   useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from("wrong_problems")
-        .select("status, student_name");
-      if (error) {
-        setConn("실패");
-        setErrorMsg(error.message);
-        return;
-      }
-      setConn("성공");
-      setStats({
-        studying: data.filter((d) => d.status === "학습중").length,
-        done: data.filter((d) => d.status === "완료").length,
-        students: new Set(data.map((d) => d.student_name)).size,
+    supabase
+      .from("wrong_problems")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        setProblems((data as DBProblem[]) ?? []);
+        setLoading(false);
       });
-    })();
   }, []);
 
-  const menus = [
-    { href: "/upload", title: "오답 등록", desc: "틀린 문제를 사진으로 올리기", icon: "📸" },
-    { href: "/box", title: "학생 오답함", desc: "학습중인 문제 풀이 올리기", icon: "📋" },
-    { href: "/admin", title: "원장·선생님 관리", desc: "현황·풀이 확인, 횟수 조정", icon: "🧑‍🏫" },
-    { href: "/students", title: "학생 관리", desc: "학생 명단 등록·수정", icon: "🧑‍🎓" },
-  ];
+  const names = ["전체", ...Array.from(new Set(problems.map((p) => p.student_name)))];
+  const mine = who === "전체" ? problems : problems.filter((p) => p.student_name === who);
+  const sm = summarize(mine);
+  const todo = mine.filter((p) => statusKey(p) !== "done");
+  const recentDone = mine.filter((p) => statusKey(p) === "done").slice(0, 3);
 
   return (
     <>
-      <header className="appbar">
-        <div className="appbar-inner">
-          <span className="appbar-brand">오답 반복학습</span>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="오늘도 반복 학습으로 실력을 다져요"
+        title="오늘의 학습"
+        sub={`풀어야 할 문제 ${todo.length}개 · 완료 ${sm.done}개`}
+        actions={
+          <button className="btn btn-primary" onClick={() => router.push("/upload")}>
+            <IconPlus size={14} />새 오답 등록
+          </button>
+        }
+      />
 
-      <main className="container">
-        <h1 className="page-title">대시보드</h1>
-        <p className="page-sub">틀린 문제를 반복해서 풀고, 진행 상황을 관리하세요.</p>
+      <div className="grid grid-3">
+        <StatCard label="학습중" value={sm.study + sm.fresh} unit="문제" />
+        <StatCard label="완료" value={sm.done} unit="문제" />
+        <StatCard label="전체 진행률" value={sm.progress} unit="%" />
+      </div>
 
-        {/* 요약 */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
-          <StatBox label="학생" value={stats?.students} />
-          <StatBox label="학습중" value={stats?.studying} accent="var(--study-fg)" />
-          <StatBox label="완료" value={stats?.done} accent="var(--done-fg)" />
-        </div>
-
-        {/* 메뉴 */}
-        <div style={{ display: "grid", gap: 12 }}>
-          {menus.map((m) => (
-            <Link key={m.href} href={m.href} className="card" style={menuCard}>
-              <span style={{ fontSize: 26 }}>{m.icon}</span>
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "block", fontWeight: 800, fontSize: 16 }}>
-                  {m.title}
-                </span>
-                <span style={{ display: "block", color: "var(--muted)", fontSize: 13, marginTop: 2 }}>
-                  {m.desc}
-                </span>
-              </span>
-              <span style={{ color: "var(--faint)", fontSize: 18 }}>›</span>
-            </Link>
+      {names.length > 2 && (
+        <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+          {names.map((n) => (
+            <button
+              key={n}
+              className={`btn btn-sm ${who === n ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => setWho(n)}
+            >
+              {n}
+            </button>
           ))}
         </div>
+      )}
 
-        {/* (임시) 디자인 시안 보기 */}
-        <Link
-          href="/design"
-          className="card"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            textDecoration: "none",
-            color: "inherit",
-            marginTop: 12,
-            borderStyle: "dashed",
-          }}
-        >
-          <span style={{ fontSize: 22 }}>🎨</span>
-          <span style={{ flex: 1, fontWeight: 800, fontSize: 15 }}>디자인 시안 보기 (A/B/C 고르기)</span>
-          <span style={{ color: "var(--faint)", fontSize: 18 }}>›</span>
-        </Link>
+      <SectionH title="풀어야 할 문제" right={todo.length > 0 ? `${todo.length}건` : ""} />
 
-        {/* 연결 상태 */}
-        <div
-          className={
-            conn === "성공" ? "alert alert-ok" : conn === "실패" ? "alert alert-err" : "alert alert-info"
-          }
-          style={{ marginTop: 18, marginBottom: 0 }}
-        >
-          {conn === "확인중" && "데이터 창고에 연결하는 중…"}
-          {conn === "성공" && "● 데이터 창고 연결됨"}
-          {conn === "실패" && `연결 실패: ${errorMsg}`}
+      {loading ? (
+        <div className="alert alert-info">불러오는 중…</div>
+      ) : todo.length === 0 ? (
+        <div className="empty card flat">
+          <IllustEmpty size={96} />
+          <h4>풀 문제가 없습니다</h4>
+          새 오답을 등록하거나 잠시 쉬어가도 좋아요.
         </div>
-      </main>
+      ) : (
+        <div className="stack" style={{ gap: 10 }}>
+          {todo.map((p) => (
+            <button
+              key={p.id}
+              className="card card-hover"
+              style={{ padding: 18, textAlign: "left", width: "100%", background: "var(--surface)" }}
+              onClick={() => router.push("/box")}
+            >
+              <div className="row-between" style={{ alignItems: "flex-start", gap: 14 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="row" style={{ gap: 8, marginBottom: 6 }}>
+                    <StatusChip status={statusKey(p)} />
+                    <span className="muted" style={{ fontSize: 12 }}>{p.student_name} · 등록 {md(p.created_at)}</span>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 16 }}>{problemTitle(p)}</div>
+                  <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>{problemTopic(p)}</div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 5, letterSpacing: "0.1em", textTransform: "uppercase" }}>반복</div>
+                  <ProgressDots total={p.target_count} done={p.done_count} current={statusKey(p) === "study"} />
+                  <div className="num" style={{ marginTop: 6, fontSize: 13 }}>{p.done_count}/{p.target_count}</div>
+                </div>
+                <IconChevronRight size={18} className="faint" />
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {recentDone.length > 0 && (
+        <>
+          <SectionH title="최근 완료한 문제" />
+          <div className="stack" style={{ gap: 8 }}>
+            {recentDone.map((p) => (
+              <div key={p.id} className="card flat" style={{ padding: 14 }}>
+                <div className="row-between">
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{problemTitle(p)}</div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{p.student_name} · {problemTopic(p)}</div>
+                  </div>
+                  <span className="chip chip-done"><span className="dot" />완료</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }
-
-function StatBox({ label, value, accent }: { label: string; value?: number; accent?: string }) {
-  return (
-    <div className="card" style={{ flex: 1, textAlign: "center", padding: "16px 0" }}>
-      <div style={{ fontSize: 26, fontWeight: 800, color: accent ?? "var(--ink)" }}>
-        {value ?? "—"}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{label}</div>
-    </div>
-  );
-}
-
-const menuCard: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 14,
-  textDecoration: "none",
-  color: "inherit",
-};
