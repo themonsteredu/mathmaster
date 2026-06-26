@@ -2,23 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { DBProblem, problemTitle, problemTopic, problemImage } from "@/lib/data";
+import { DBProblem, problemTitle, problemTopic, problemImage, todayISO } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
-
-function ymd(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 export default function WorksheetPage() {
   const [problems, setProblems] = useState<DBProblem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const today = new Date();
-  const weekAgo = new Date();
-  weekAgo.setDate(today.getDate() - 6);
-
-  const [from, setFrom] = useState(ymd(weekAgo));
-  const [to, setTo] = useState(ymd(today));
+  const [until, setUntil] = useState(todayISO()); // 이 날짜까지 '출제할 때가 된' 오답
   const [who, setWho] = useState("전체");
   const [perPage, setPerPage] = useState<4 | 6>(4);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -37,20 +28,19 @@ export default function WorksheetPage() {
 
   const names = ["전체", ...Array.from(new Set(problems.map((p) => p.student_name)))];
 
-  // 기간 + 학생으로 거른 대상
-  const inRange = useMemo(() => {
-    const f = new Date(from + "T00:00:00").getTime();
-    const t = new Date(to + "T23:59:59").getTime();
+  // 출제 대상 = 경고/완료가 아니고, 출제 예정일(due_date)이 기준일 이전인 문항
+  const due = useMemo(() => {
     return problems.filter((p) => {
-      const c = new Date(p.created_at).getTime();
-      return c >= f && c <= t && (who === "전체" || p.student_name === who);
+      if (p.status === "경고" || p.status === "완료") return false;
+      if (who !== "전체" && p.student_name !== who) return false;
+      if (!p.due_date) return true; // 일정이 없는(옛) 문항은 항상 출제 대상
+      return p.due_date <= until;
     });
-  }, [problems, from, to, who]);
+  }, [problems, until, who]);
 
-  // 기본 선택 = 기간 내 전부 (사용자가 손대기 전까지 자동 동기화)
   useEffect(() => {
-    if (!touched) setSelected(new Set(inRange.map((p) => p.id)));
-  }, [inRange, touched]);
+    if (!touched) setSelected(new Set(due.map((p) => p.id)));
+  }, [due, touched]);
 
   function toggle(id: string) {
     setTouched(true);
@@ -62,7 +52,7 @@ export default function WorksheetPage() {
     });
   }
 
-  const chosen = inRange.filter((p) => selected.has(p.id));
+  const chosen = due.filter((p) => selected.has(p.id));
   const pages: DBProblem[][] = [];
   for (let i = 0; i < chosen.length; i += perPage) pages.push(chosen.slice(i, i + perPage));
 
@@ -75,7 +65,7 @@ export default function WorksheetPage() {
         <PageHeader
           eyebrow="시험지"
           title="오답 시험지 만들기"
-          sub="기간을 고르면 그 기간의 오답(낙서 제거본)이 A4 2단으로 정리돼요. 인쇄하거나 PDF로 저장하세요."
+          sub="출제할 때가 된 오답(낙서 제거본)이 A4 2단으로 정리돼요. 인쇄하거나 PDF로 저장하세요."
           actions={
             <button className="btn btn-primary" onClick={() => window.print()} disabled={chosen.length === 0}>
               🖨️ 인쇄 / PDF 저장
@@ -86,12 +76,8 @@ export default function WorksheetPage() {
         <div className="card" style={{ padding: 18, marginBottom: 16 }}>
           <div className="row" style={{ gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
             <div>
-              <label className="label">시작일</label>
-              <input className="input" type="date" value={from} onChange={(e) => { setFrom(e.target.value); setTouched(false); }} />
-            </div>
-            <div>
-              <label className="label">종료일</label>
-              <input className="input" type="date" value={to} onChange={(e) => { setTo(e.target.value); setTouched(false); }} />
+              <label className="label">기준일 (이 날짜까지 출제할 오답)</label>
+              <input className="input" type="date" value={until} onChange={(e) => { setUntil(e.target.value); setTouched(false); }} />
             </div>
             <div>
               <label className="label">한 페이지 문항 수</label>
@@ -112,22 +98,21 @@ export default function WorksheetPage() {
           )}
         </div>
 
-        {/* 포함할 문항 선택 */}
-        <div className="section-h"><h2>포함할 문항 ({chosen.length}/{inRange.length})</h2></div>
+        <div className="section-h"><h2>포함할 문항 ({chosen.length}/{due.length})</h2></div>
         {loading ? (
           <div className="alert alert-info">불러오는 중…</div>
-        ) : inRange.length === 0 ? (
-          <div className="empty card flat"><h4>해당 기간에 오답이 없어요</h4>기간을 바꾸거나 오답을 먼저 등록해 주세요.</div>
+        ) : due.length === 0 ? (
+          <div className="empty card flat"><h4>출제할 오답이 없어요</h4>아직 출제일이 안 됐거나, 오답을 먼저 등록해 주세요. (기준일을 미래로 바꿔도 돼요)</div>
         ) : (
           <div className="stack" style={{ gap: 8, marginBottom: 18 }}>
-            {inRange.map((p) => (
+            {due.map((p) => (
               <label key={p.id} className="card" style={{ padding: 12, display: "flex", gap: 12, alignItems: "center", cursor: "pointer" }}>
                 <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={problemImage(p)} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, background: "var(--bg-soft)" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{problemTitle(p)} <span className="muted" style={{ fontWeight: 400 }}>· {p.student_name}</span></div>
-                  <div className="muted" style={{ fontSize: 12 }}>{problemTopic(p)}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{problemTopic(p)}{p.due_date ? ` · 출제일 ${p.due_date}` : ""}{p.attempts ? ` · ${p.attempts + 1}회차` : ""}</div>
                 </div>
               </label>
             ))}
@@ -135,11 +120,10 @@ export default function WorksheetPage() {
         )}
 
         <div className="alert alert-info" style={{ marginBottom: 8 }}>
-          💡 미리보기 ↓ 가 실제 인쇄 모양이에요. <b>인쇄 / PDF 저장</b>을 누르면 인쇄창에서 “PDF로 저장”을 고를 수 있어요.
+          💡 아래 미리보기가 실제 인쇄 모양이에요. <b>인쇄 / PDF 저장</b>을 누르면 인쇄창에서 “PDF로 저장”을 고를 수 있어요.
         </div>
       </div>
 
-      {/* 인쇄 영역 (미리보기 = 실제 출력) */}
       {pages.map((page, pi) => (
         <div key={pi} className="ws-page">
           <div className="ws-head">

@@ -68,3 +68,10 @@ create policy "allow all - students" on students for all using (true) with check
 -- 이 한 줄만 SQL Editor에 붙여넣고 RUN 하세요.
 -- ============================================================
 alter table wrong_problems add column if not exists cleaned_image_url text;
+
+-- ============================================================
+-- [추가] 간격 반복(망각곡선) 스케줄 칸
+-- 아래 두 줄을 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+alter table wrong_problems add column if not exists attempts integer not null default 0;
+alter table wrong_problems add column if not exists due_date date;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase, PHOTO_BUCKET } from "@/lib/supabase";
+import { nextDue } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
 import { IconCamera } from "@/components/icons";
 
@@ -41,7 +42,7 @@ export default function UploadPage() {
   const [subject, setSubject] = useState("");
   const [unit, setUnit] = useState("");
 
-  const [targetCount, setTargetCount] = useState(3);
+  const [targetCount, setTargetCount] = useState(5);
   const [uploadedBy, setUploadedBy] = useState("선생님");
 
   const [busy, setBusy] = useState(false);
@@ -122,26 +123,32 @@ export default function UploadPage() {
         cleanedUrlStored = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(cpath).data.publicUrl;
       }
 
-      const payload: Record<string, unknown> = {
+      const base: Record<string, unknown> = {
         student_name: studentName.trim(),
         problem_image_url: pub.publicUrl,
-        cleaned_image_url: cleanedUrlStored,
         subject: subject.trim() || null,
         unit: unit.trim() || null,
         target_count: targetCount,
         uploaded_by: uploadedBy,
       };
+      // 새 모델: 첫 출제 예정일을 잡고 '대기' 상태로 등록
+      const full: Record<string, unknown> = {
+        ...base,
+        cleaned_image_url: cleanedUrlStored,
+        attempts: 0,
+        due_date: nextDue(0),
+        status: "대기",
+      };
 
-      let { error: insErr } = await supabase.from("wrong_problems").insert(payload);
+      let { error: insErr } = await supabase.from("wrong_problems").insert(full);
 
-      // 보정본 저장 칸이 아직 없으면, 그 칸 없이라도 등록되게 한 번 더 시도
-      if (insErr && (insErr.message || "").includes("cleaned_image_url")) {
-        delete payload.cleaned_image_url;
-        ({ error: insErr } = await supabase.from("wrong_problems").insert(payload));
+      // 새 칸(보정본/스케줄)이 아직 없으면, 기본 정보만으로라도 등록
+      if (insErr && /cleaned_image_url|attempts|due_date|column/.test(insErr.message || "")) {
+        ({ error: insErr } = await supabase.from("wrong_problems").insert(base));
         if (!insErr) {
           setMessage({
             type: "ok",
-            text: `등록은 됐어요! 다만 "보정본 저장 칸"이 아직 없어 깨끗한 사진은 저장되지 않았어요. Supabase에서 SQL 한 줄(alter table wrong_problems add column if not exists cleaned_image_url text;)을 실행하면 다음부터 보정본도 저장돼요.`,
+            text: `등록은 됐어요! 다만 새 기능용 칸이 아직 없어 일부(보정본/출제 일정)는 저장되지 않았어요. Supabase에서 안내된 SQL을 실행하면 다음부터 모두 저장돼요.`,
           });
           setFile(null);
           setPreview("");
@@ -151,7 +158,7 @@ export default function UploadPage() {
       }
       if (insErr) throw new Error(insErr.message);
 
-      setMessage({ type: "ok", text: `등록 완료! "${studentName.trim()}" 학생의 오답이 ${targetCount}회 목표로 추가됐어요.` });
+      setMessage({ type: "ok", text: `등록 완료! "${studentName.trim()}" 학생의 오답을 추가했어요. ${nextDue(0)}에 첫 출제 예정이에요.` });
       setFile(null);
       setPreview("");
       setCleanedUrl("");
@@ -262,13 +269,14 @@ export default function UploadPage() {
         </div>
 
         <div className="field" style={{ marginTop: 16 }}>
-          <label className="label">목표 횟수 (몇 번 반복해서 풀까요?)</label>
+          <label className="label">최대 반복 횟수 (며칠 간격으로 최대 몇 번 출제할까요?)</label>
           <div className="stepper">
             <button type="button" className="step-btn" onClick={() => setTargetCount((n) => Math.max(1, n - 1))}>−</button>
             <span className="step-val">{targetCount}</span>
-            <button type="button" className="step-btn" onClick={() => setTargetCount((n) => Math.min(20, n + 1))}>+</button>
+            <button type="button" className="step-btn" onClick={() => setTargetCount((n) => Math.min(5, n + 1))}>+</button>
             <span className="muted" style={{ fontSize: 13, marginLeft: 4 }}>회</span>
           </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>1→3→7→14→30일 간격으로 재출제하고, 끝까지 못 풀면 「경고 문항」으로 남겨요.</p>
         </div>
 
         <div className="field">

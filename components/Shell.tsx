@@ -31,7 +31,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       const [{ count: box }, { count: students }] = await Promise.all([
-        supabase.from("wrong_problems").select("id", { count: "exact", head: true }).eq("status", "학습중"),
+        supabase.from("wrong_problems").select("id", { count: "exact", head: true }).neq("status", "완료").neq("status", "경고"),
         supabase.from("students").select("id", { count: "exact", head: true }),
       ]);
       setCounts({ box: box ?? 0, students: students ?? 0 });
