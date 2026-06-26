@@ -85,7 +85,7 @@ export default function StudentHome() {
               key={p.id}
               className="card card-hover"
               style={{ padding: 18, textAlign: "left", width: "100%", background: "var(--surface)" }}
-              onClick={() => router.push("/box")}
+              onClick={() => router.push(`/solve/${p.id}`)}
             >
               <div className="row-between" style={{ alignItems: "flex-start", gap: 14 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
