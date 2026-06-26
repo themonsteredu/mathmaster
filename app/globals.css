@@ -1,3 +1,24 @@
+:root {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --border: #e2e8f0;
+  --brand: #1e293b;
+  --brand-hover: #0f172a;
+  --accent: #0f766e;
+  --accent-soft: #ccfbf1;
+  --study-bg: #e0e7ff;
+  --study-fg: #4338ca;
+  --done-bg: #dcfce7;
+  --done-fg: #15803d;
+  --danger: #b91c1c;
+  --danger-bg: #fef2f2;
+  --ok-bg: #f0fdf4;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -6,8 +27,252 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
-    "Malgun Gothic", "맑은 고딕", sans-serif;
-  background: #f5f7fb;
-  color: #1f2937;
+    "Pretendard", "Malgun Gothic", "맑은 고딕", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+}
+
+/* ---------- 레이아웃 ---------- */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.appbar-inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.appbar-brand {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  color: var(--ink);
+}
+.appbar-back {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+}
+.container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 22px 18px 60px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.page-sub {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 4px;
+  margin-bottom: 20px;
+}
+
+/* ---------- 카드 ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+.card + .card {
+  margin-top: 12px;
+}
+
+/* ---------- 버튼 ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--brand-hover);
+}
+.btn-soft {
+  background: #f1f5f9;
+  color: var(--ink);
+  border-color: var(--border);
+}
+.btn-soft:hover {
+  background: #e2e8f0;
+}
+.btn-ghost {
+  background: var(--surface);
+  color: var(--brand);
+  border-color: var(--border);
+}
+.btn-ghost:hover {
+  background: #f8fafc;
+}
+.btn-block {
+  width: 100%;
+}
+
+/* ---------- 입력 ---------- */
+.field {
+  margin-top: 16px;
+}
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 7px;
+}
+.input,
+.select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 16px;
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input:focus,
+.select:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(30, 41, 59, 0.08);
+}
+
+/* ---------- 칩 / 배지 ---------- */
+.chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chip-on {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.badge {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.badge-study {
+  background: var(--study-bg);
+  color: var(--study-fg);
+}
+.badge-done {
+  background: var(--done-bg);
+  color: var(--done-fg);
+}
+
+/* ---------- 진행 막대 ---------- */
+.progress {
+  flex: 1;
+  height: 9px;
+  background: #eef2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+/* ---------- 알림 메시지 ---------- */
+.alert {
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.alert-ok {
+  background: var(--ok-bg);
+  color: var(--done-fg);
+  border: 1px solid #bbf7d0;
+}
+.alert-err {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid #fecaca;
+}
+.alert-info {
+  background: #f8fafc;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+/* ---------- 스텝퍼 ---------- */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.step-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+}
+.step-btn:hover {
+  background: #f8fafc;
+}
+.step-val {
+  min-width: 30px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
 }

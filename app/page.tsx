@@ -4,148 +4,107 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
+type Stats = { studying: number; done: number; students: number };
+
 export default function Home() {
-  const [status, setStatus] = useState<"확인중" | "성공" | "실패">("확인중");
-  const [count, setCount] = useState<number | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [conn, setConn] = useState<"확인중" | "성공" | "실패">("확인중");
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    // 창고(Supabase)에 연결해서 오답문제 개수를 세어 본다 → 연결 확인용
-    supabase
-      .from("wrong_problems")
-      .select("*", { count: "exact", head: true })
-      .then(({ count, error }) => {
-        if (error) {
-          setStatus("실패");
-          setErrorMsg(error.message);
-        } else {
-          setStatus("성공");
-          setCount(count ?? 0);
-        }
+    (async () => {
+      const { data, error } = await supabase
+        .from("wrong_problems")
+        .select("status, student_name");
+      if (error) {
+        setConn("실패");
+        setErrorMsg(error.message);
+        return;
+      }
+      setConn("성공");
+      setStats({
+        studying: data.filter((d) => d.status === "학습중").length,
+        done: data.filter((d) => d.status === "완료").length,
+        students: new Set(data.map((d) => d.student_name)).size,
       });
+    })();
   }, []);
 
-  const box =
-    status === "성공"
-      ? { bg: "#ecfdf5", color: "#047857" }
-      : status === "실패"
-        ? { bg: "#fef2f2", color: "#b91c1c" }
-        : { bg: "#eef2ff", color: "#4338ca" };
+  const menus = [
+    { href: "/upload", title: "오답 등록", desc: "틀린 문제를 사진으로 올리기", icon: "📸" },
+    { href: "/box", title: "학생 오답함", desc: "학습중인 문제 풀이 올리기", icon: "📋" },
+    { href: "/admin", title: "원장·선생님 관리", desc: "현황·풀이 확인, 횟수 조정", icon: "🧑‍🏫" },
+    { href: "/students", title: "학생 관리", desc: "학생 명단 등록·수정", icon: "🧑‍🎓" },
+  ];
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          background: "#ffffff",
-          borderRadius: "20px",
-          padding: "48px 32px",
-          maxWidth: "440px",
-          width: "100%",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
-        }}
-      >
-        <div style={{ fontSize: "48px", marginBottom: "16px" }}>📐</div>
-        <h1 style={{ fontSize: "26px", fontWeight: 800, marginBottom: "12px" }}>
-          오답 반복학습
-        </h1>
-        <p style={{ fontSize: "15px", color: "#6b7280", lineHeight: 1.6 }}>
-          틀린 문제를 사진으로 올리고,
-          <br />
-          정한 횟수만큼 반복해서 푸는 학습 앱이에요.
-        </p>
-
-        <Link
-          href="/upload"
-          style={{
-            display: "block",
-            marginTop: "24px",
-            padding: "16px",
-            background: "#4338ca",
-            color: "#fff",
-            borderRadius: "14px",
-            fontSize: "16px",
-            fontWeight: 800,
-            textDecoration: "none",
-          }}
-        >
-          📸 오답 문제 올리기
-        </Link>
-
-        <Link
-          href="/box"
-          style={{
-            display: "block",
-            marginTop: "12px",
-            padding: "16px",
-            background: "#eef2ff",
-            color: "#4338ca",
-            borderRadius: "14px",
-            fontSize: "16px",
-            fontWeight: 800,
-            textDecoration: "none",
-          }}
-        >
-          📋 학생 오답함 보기
-        </Link>
-
-        <Link
-          href="/admin"
-          style={{
-            display: "block",
-            marginTop: "12px",
-            padding: "16px",
-            background: "#f3f4f6",
-            color: "#374151",
-            borderRadius: "14px",
-            fontSize: "16px",
-            fontWeight: 800,
-            textDecoration: "none",
-          }}
-        >
-          🧑‍🏫 원장·선생님 관리
-        </Link>
-
-        <div
-          style={{
-            marginTop: "28px",
-            padding: "14px 16px",
-            background: box.bg,
-            color: box.color,
-            borderRadius: "12px",
-            fontSize: "14px",
-            fontWeight: 600,
-            lineHeight: 1.5,
-          }}
-        >
-          {status === "확인중" && "⏳ 데이터 창고에 연결하는 중..."}
-          {status === "성공" && (
-            <>
-              ✅ 1단계 완료 — 데이터 창고 연결 성공!
-              <br />
-              현재 등록된 오답문제: {count}개
-            </>
-          )}
-          {status === "실패" && (
-            <>
-              ❌ 창고 연결 실패
-              <br />
-              <span style={{ fontSize: "12px", fontWeight: 400 }}>
-                {errorMsg}
-              </span>
-            </>
-          )}
+    <>
+      <header className="appbar">
+        <div className="appbar-inner">
+          <span className="appbar-brand">오답 반복학습</span>
         </div>
-      </div>
-    </main>
+      </header>
+
+      <main className="container">
+        <h1 className="page-title">대시보드</h1>
+        <p className="page-sub">틀린 문제를 반복해서 풀고, 진행 상황을 관리하세요.</p>
+
+        {/* 요약 */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+          <StatBox label="학생" value={stats?.students} />
+          <StatBox label="학습중" value={stats?.studying} accent="var(--study-fg)" />
+          <StatBox label="완료" value={stats?.done} accent="var(--done-fg)" />
+        </div>
+
+        {/* 메뉴 */}
+        <div style={{ display: "grid", gap: 12 }}>
+          {menus.map((m) => (
+            <Link key={m.href} href={m.href} className="card" style={menuCard}>
+              <span style={{ fontSize: 26 }}>{m.icon}</span>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "block", fontWeight: 800, fontSize: 16 }}>
+                  {m.title}
+                </span>
+                <span style={{ display: "block", color: "var(--muted)", fontSize: 13, marginTop: 2 }}>
+                  {m.desc}
+                </span>
+              </span>
+              <span style={{ color: "var(--faint)", fontSize: 18 }}>›</span>
+            </Link>
+          ))}
+        </div>
+
+        {/* 연결 상태 */}
+        <div
+          className={
+            conn === "성공" ? "alert alert-ok" : conn === "실패" ? "alert alert-err" : "alert alert-info"
+          }
+          style={{ marginTop: 18, marginBottom: 0 }}
+        >
+          {conn === "확인중" && "데이터 창고에 연결하는 중…"}
+          {conn === "성공" && "● 데이터 창고 연결됨"}
+          {conn === "실패" && `연결 실패: ${errorMsg}`}
+        </div>
+      </main>
+    </>
   );
 }
+
+function StatBox({ label, value, accent }: { label: string; value?: number; accent?: string }) {
+  return (
+    <div className="card" style={{ flex: 1, textAlign: "center", padding: "16px 0" }}>
+      <div style={{ fontSize: 26, fontWeight: 800, color: accent ?? "var(--ink)" }}>
+        {value ?? "—"}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+const menuCard: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  textDecoration: "none",
+  color: "inherit",
+};

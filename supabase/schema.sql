@@ -47,3 +47,18 @@ on conflict (id) do nothing;
 drop policy if exists "allow all - photos" on storage.objects;
 create policy "allow all - photos" on storage.objects
   for all using (bucket_id = 'problem-photos') with check (bucket_id = 'problem-photos');
+
+-- ============================================================
+-- [추가] 학생 명단 표  (이름을 미리 등록해두고 골라 쓰기 위함)
+-- 이 부분만 따로 SQL Editor에 붙여넣고 RUN 해도 됩니다.
+-- ============================================================
+create table if not exists students (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,                 -- 학생 이름
+  grade      text,                          -- 학년/반 (선택)
+  created_at timestamptz not null default now()
+);
+
+alter table students enable row level security;
+drop policy if exists "allow all - students" on students;
+create policy "allow all - students" on students for all using (true) with check (true);
