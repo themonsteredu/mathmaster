@@ -98,6 +98,23 @@ export default function Home() {
           📋 학생 오답함 보기
         </Link>
 
+        <Link
+          href="/admin"
+          style={{
+            display: "block",
+            marginTop: "12px",
+            padding: "16px",
+            background: "#f3f4f6",
+            color: "#374151",
+            borderRadius: "14px",
+            fontSize: "16px",
+            fontWeight: 800,
+            textDecoration: "none",
+          }}
+        >
+          🧑‍🏫 원장·선생님 관리
+        </Link>
+
         <div
           style={{
             marginTop: "28px",
