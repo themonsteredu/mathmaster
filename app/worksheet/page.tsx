@@ -56,9 +56,9 @@ export default function WorksheetPage() {
   const pages: DBProblem[][] = [];
   for (let i = 0; i < chosen.length; i += perPage) pages.push(chosen.slice(i, i + perPage));
 
-  // 칸 높이·사진 높이 고정 (모든 칸 동일)
-  const cellH = perPage === 4 ? "128mm" : "84mm";
-  const imgH = perPage === 4 ? "46mm" : "30mm";
+  // 칸 높이·사진 높이 고정 (A4 한 장에 맞게)
+  const cellH = perPage === 4 ? "112mm" : "73mm";
+  const imgH = perPage === 4 ? "42mm" : "27mm";
 
   return (
     <>

@@ -805,6 +805,7 @@ a {
 
 @media print {
   .appbar,
+  .topbar,
   .sidebar,
   .mobile-nav,
   .no-print {
@@ -833,7 +834,7 @@ a {
   }
   @page {
     size: A4;
-    margin: 12mm;
+    margin: 10mm;
   }
 }
 
