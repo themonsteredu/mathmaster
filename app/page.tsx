@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 export default function Home() {
@@ -62,6 +63,23 @@ export default function Home() {
           <br />
           정한 횟수만큼 반복해서 푸는 학습 앱이에요.
         </p>
+
+        <Link
+          href="/upload"
+          style={{
+            display: "block",
+            marginTop: "24px",
+            padding: "16px",
+            background: "#4338ca",
+            color: "#fff",
+            borderRadius: "14px",
+            fontSize: "16px",
+            fontWeight: 800,
+            textDecoration: "none",
+          }}
+        >
+          📸 오답 문제 올리기
+        </Link>
 
         <div
           style={{
