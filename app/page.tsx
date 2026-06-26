@@ -1,4 +1,36 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+
 export default function Home() {
+  const [status, setStatus] = useState<"확인중" | "성공" | "실패">("확인중");
+  const [count, setCount] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+
+  useEffect(() => {
+    // 창고(Supabase)에 연결해서 오답문제 개수를 세어 본다 → 연결 확인용
+    supabase
+      .from("wrong_problems")
+      .select("*", { count: "exact", head: true })
+      .then(({ count, error }) => {
+        if (error) {
+          setStatus("실패");
+          setErrorMsg(error.message);
+        } else {
+          setStatus("성공");
+          setCount(count ?? 0);
+        }
+      });
+  }, []);
+
+  const box =
+    status === "성공"
+      ? { bg: "#ecfdf5", color: "#047857" }
+      : status === "실패"
+        ? { bg: "#fef2f2", color: "#b91c1c" }
+        : { bg: "#eef2ff", color: "#4338ca" };
+
   return (
     <main
       style={{
@@ -30,18 +62,36 @@ export default function Home() {
           <br />
           정한 횟수만큼 반복해서 푸는 학습 앱이에요.
         </p>
+
         <div
           style={{
             marginTop: "28px",
-            padding: "12px 16px",
-            background: "#eef2ff",
-            color: "#4338ca",
+            padding: "14px 16px",
+            background: box.bg,
+            color: box.color,
             borderRadius: "12px",
             fontSize: "14px",
             fontWeight: 600,
+            lineHeight: 1.5,
           }}
         >
-          ✅ 0단계 완료 — 앱이 정상적으로 켜졌어요!
+          {status === "확인중" && "⏳ 데이터 창고에 연결하는 중..."}
+          {status === "성공" && (
+            <>
+              ✅ 1단계 완료 — 데이터 창고 연결 성공!
+              <br />
+              현재 등록된 오답문제: {count}개
+            </>
+          )}
+          {status === "실패" && (
+            <>
+              ❌ 창고 연결 실패
+              <br />
+              <span style={{ fontSize: "12px", fontWeight: 400 }}>
+                {errorMsg}
+              </span>
+            </>
+          )}
         </div>
       </div>
     </main>
