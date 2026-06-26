@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { DBProblem, DBStudent, summarize } from "@/lib/data";
+import { DBProblem, DBStudent } from "@/lib/data";
 import { PageHeader, Avatar } from "@/components/ui";
 import { IconPlus, IconSearch, IconChevronRight } from "@/components/icons";
 
@@ -60,7 +60,14 @@ export default function StudentsPage() {
   const filtered = students.filter(
     (s) => (gradeFilter === "전체" || s.grade === gradeFilter) && (q === "" || s.name.includes(q)),
   );
-  const statOf = (n: string) => summarize(problems.filter((p) => p.student_name === n));
+  const statOf = (n: string) => {
+    const ps = problems.filter((p) => p.student_name === n);
+    return {
+      total: ps.length,
+      active: ps.filter((p) => p.status !== "경고" && p.status !== "완료").length,
+      warn: ps.filter((p) => p.status === "경고").length,
+    };
+  };
 
   return (
     <>
@@ -112,7 +119,8 @@ export default function StudentsPage() {
                 <th>학생</th>
                 <th style={{ width: 80 }}>학년</th>
                 <th style={{ width: 90 }}>등록 오답</th>
-                <th style={{ width: "26%" }}>진행률</th>
+                <th style={{ width: 80 }}>진행 중</th>
+                <th style={{ width: 80 }}>경고</th>
                 <th style={{ width: 70 }}></th>
               </tr>
             </thead>
@@ -124,12 +132,8 @@ export default function StudentsPage() {
                     <td><span className="name"><Avatar name={s.name} />{s.name}</span></td>
                     <td className="muted">{s.grade || "—"}</td>
                     <td><span className="num">{sm.total}</span></td>
-                    <td>
-                      <div className="row" style={{ gap: 10 }}>
-                        <div className="bar" style={{ flex: 1, maxWidth: 120 }}><div className="fill" style={{ width: sm.progress + "%" }} /></div>
-                        <span className="num" style={{ fontSize: 13 }}>{sm.progress}%</span>
-                      </div>
-                    </td>
+                    <td><span className="num">{sm.active}</span></td>
+                    <td>{sm.warn > 0 ? <span className="chip chip-danger"><span className="dot" />{sm.warn}</span> : <span className="faint">—</span>}</td>
                     <td>
                       <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger-ink)" }} onClick={(e) => { e.stopPropagation(); removeStudent(s); }}>삭제</button>
                     </td>
@@ -137,7 +141,7 @@ export default function StudentsPage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={5}><div className="empty" style={{ padding: 28 }}><h4>해당하는 학생이 없습니다</h4></div></td></tr>
+                <tr><td colSpan={6}><div className="empty" style={{ padding: 28 }}><h4>해당하는 학생이 없습니다</h4></div></td></tr>
               )}
             </tbody>
           </table>
