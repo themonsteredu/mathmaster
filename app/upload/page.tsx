@@ -109,7 +109,7 @@ export default function UploadPage() {
       const ext = file.name.split(".").pop() || "jpg";
       const path = `${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, file);
-      if (upErr) throw upErr;
+      if (upErr) throw new Error("사진 업로드 실패: " + upErr.message);
       const { data: pub } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
 
       // 2) 보정본을 쓰기로 했으면 따로 저장
@@ -118,11 +118,11 @@ export default function UploadPage() {
         const blob = await dataUrlToBlob(cleanedUrl);
         const cpath = `cleaned/${crypto.randomUUID()}.png`;
         const { error: ce } = await supabase.storage.from(PHOTO_BUCKET).upload(cpath, blob, { contentType: "image/png" });
-        if (ce) throw ce;
+        if (ce) throw new Error("보정본 업로드 실패: " + ce.message);
         cleanedUrlStored = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(cpath).data.publicUrl;
       }
 
-      const { error: insErr } = await supabase.from("wrong_problems").insert({
+      const payload: Record<string, unknown> = {
         student_name: studentName.trim(),
         problem_image_url: pub.publicUrl,
         cleaned_image_url: cleanedUrlStored,
@@ -130,15 +130,34 @@ export default function UploadPage() {
         unit: unit.trim() || null,
         target_count: targetCount,
         uploaded_by: uploadedBy,
-      });
-      if (insErr) throw insErr;
+      };
+
+      let { error: insErr } = await supabase.from("wrong_problems").insert(payload);
+
+      // 보정본 저장 칸이 아직 없으면, 그 칸 없이라도 등록되게 한 번 더 시도
+      if (insErr && (insErr.message || "").includes("cleaned_image_url")) {
+        delete payload.cleaned_image_url;
+        ({ error: insErr } = await supabase.from("wrong_problems").insert(payload));
+        if (!insErr) {
+          setMessage({
+            type: "ok",
+            text: `등록은 됐어요! 다만 "보정본 저장 칸"이 아직 없어 깨끗한 사진은 저장되지 않았어요. Supabase에서 SQL 한 줄(alter table wrong_problems add column if not exists cleaned_image_url text;)을 실행하면 다음부터 보정본도 저장돼요.`,
+          });
+          setFile(null);
+          setPreview("");
+          setCleanedUrl("");
+          return;
+        }
+      }
+      if (insErr) throw new Error(insErr.message);
 
       setMessage({ type: "ok", text: `등록 완료! "${studentName.trim()}" 학생의 오답이 ${targetCount}회 목표로 추가됐어요.` });
       setFile(null);
       setPreview("");
       setCleanedUrl("");
     } catch (e) {
-      const text = e instanceof Error ? e.message : "알 수 없는 오류가 났어요.";
+      const text =
+        e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : "알 수 없는 오류가 났어요.";
       setMessage({ type: "err", text: `등록 실패: ${text}` });
     } finally {
       setBusy(false);
