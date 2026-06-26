@@ -74,6 +74,25 @@ export default function Home() {
           ))}
         </div>
 
+        {/* (임시) 디자인 시안 보기 */}
+        <Link
+          href="/design"
+          className="card"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            textDecoration: "none",
+            color: "inherit",
+            marginTop: 12,
+            borderStyle: "dashed",
+          }}
+        >
+          <span style={{ fontSize: 22 }}>🎨</span>
+          <span style={{ flex: 1, fontWeight: 800, fontSize: 15 }}>디자인 시안 보기 (A/B/C 고르기)</span>
+          <span style={{ color: "var(--faint)", fontSize: 18 }}>›</span>
+        </Link>
+
         {/* 연결 상태 */}
         <div
           className={
