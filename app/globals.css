@@ -1,0 +1,13 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", "맑은 고딕", sans-serif;
+  background: #f5f7fb;
+  color: #1f2937;
+  -webkit-font-smoothing: antialiased;
+}
