@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase, PHOTO_BUCKET } from "@/lib/supabase";
-import { DBProblem, statusKey, problemTitle, problemTopic } from "@/lib/data";
+import { DBProblem, statusKey, problemTitle, problemTopic, problemImage } from "@/lib/data";
 import { PageHeader, StatusChip, ProgressDots } from "@/components/ui";
 import { IllustEmpty } from "@/components/icons";
 
@@ -115,7 +115,7 @@ export default function BoxPage() {
             return (
               <div key={p.id} className="card" style={{ padding: 14, display: "flex", gap: 14 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.problem_image_url} alt="문제" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "var(--bg-soft)" }} />
+                <img src={problemImage(p)} alt="문제" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "var(--bg-soft)" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="row" style={{ gap: 8, marginBottom: 5 }}>
                     <StatusChip status={statusKey(p)} />

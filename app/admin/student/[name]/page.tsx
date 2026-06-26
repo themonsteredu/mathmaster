@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { DBProblem, statusKey, problemTitle, problemTopic, summarize } from "@/lib/data";
+import { DBProblem, statusKey, problemTitle, problemTopic, problemImage, summarize } from "@/lib/data";
 import { PageHeader, StatCard, SectionH, StatusChip, ProgressDots } from "@/components/ui";
 import { IconChevronLeft } from "@/components/icons";
 
@@ -87,7 +87,7 @@ export default function StudentDetail() {
               <div key={p.id} className="card" style={{ padding: 16 }}>
                 <div className="row" style={{ gap: 14, alignItems: "flex-start" }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.problem_image_url} alt="문제" style={{ width: 76, height: 76, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "var(--bg-soft)" }} />
+                  <img src={problemImage(p)} alt="문제" style={{ width: 76, height: 76, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "var(--bg-soft)" }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="row" style={{ gap: 8, marginBottom: 5 }}>
                       <StatusChip status={statusKey(p)} />

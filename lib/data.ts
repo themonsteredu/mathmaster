@@ -2,6 +2,7 @@ export type DBProblem = {
   id: string;
   student_name: string;
   problem_image_url: string;
+  cleaned_image_url: string | null;
   subject: string | null;
   unit: string | null;
   target_count: number;
@@ -10,6 +11,11 @@ export type DBProblem = {
   uploaded_by: string;
   created_at: string;
 };
+
+/** 화면에 보여줄 문제 사진 — 보정본이 있으면 그것, 없으면 원본 */
+export function problemImage(p: DBProblem): string {
+  return p.cleaned_image_url || p.problem_image_url;
+}
 
 export type DBStudent = {
   id: string;

@@ -62,3 +62,9 @@ create table if not exists students (
 alter table students enable row level security;
 drop policy if exists "allow all - students" on students;
 create policy "allow all - students" on students for all using (true) with check (true);
+
+-- ============================================================
+-- [추가] 낙서 지운 보정본 사진 주소 칸
+-- 이 한 줄만 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+alter table wrong_problems add column if not exists cleaned_image_url text;

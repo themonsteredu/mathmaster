@@ -6,9 +6,31 @@ import { supabase, PHOTO_BUCKET } from "@/lib/supabase";
 import { PageHeader } from "@/components/ui";
 import { IconCamera } from "@/components/icons";
 
+function fileToBase64(file: File): Promise<{ data: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = r.result as string;
+      resolve({ data: s.split(",")[1], mimeType: file.type || "image/jpeg" });
+    };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
+
+  // 낙서 지우기 관련
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanedUrl, setCleanedUrl] = useState(""); // data URL (미리보기 + 업로드용)
+  const [useCleaned, setUseCleaned] = useState(true);
+  const [cleanError, setCleanError] = useState("");
 
   const [students, setStudents] = useState<string[]>([]);
   const [studentName, setStudentName] = useState("");
@@ -50,6 +72,30 @@ export default function UploadPage() {
     const f = e.target.files?.[0] ?? null;
     setFile(f);
     setPreview(f ? URL.createObjectURL(f) : "");
+    setCleanedUrl("");
+    setCleanError("");
+  }
+
+  async function cleanScribbles() {
+    if (!file) return;
+    setCleaning(true);
+    setCleanError("");
+    try {
+      const { data, mimeType } = await fileToBase64(file);
+      const res = await fetch("/api/clean-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data, mimeType }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "처리 실패");
+      setCleanedUrl(`data:${j.mimeType};base64,${j.image}`);
+      setUseCleaned(true);
+    } catch (e) {
+      setCleanError(e instanceof Error ? e.message : "낙서 지우기에 실패했어요.");
+    } finally {
+      setCleaning(false);
+    }
   }
 
   async function onSubmit() {
@@ -59,15 +105,27 @@ export default function UploadPage() {
 
     setBusy(true);
     try {
+      // 1) 원본은 항상 저장
       const ext = file.name.split(".").pop() || "jpg";
       const path = `${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, file);
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
 
+      // 2) 보정본을 쓰기로 했으면 따로 저장
+      let cleanedUrlStored: string | null = null;
+      if (cleanedUrl && useCleaned) {
+        const blob = await dataUrlToBlob(cleanedUrl);
+        const cpath = `cleaned/${crypto.randomUUID()}.png`;
+        const { error: ce } = await supabase.storage.from(PHOTO_BUCKET).upload(cpath, blob, { contentType: "image/png" });
+        if (ce) throw ce;
+        cleanedUrlStored = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(cpath).data.publicUrl;
+      }
+
       const { error: insErr } = await supabase.from("wrong_problems").insert({
         student_name: studentName.trim(),
         problem_image_url: pub.publicUrl,
+        cleaned_image_url: cleanedUrlStored,
         subject: subject.trim() || null,
         unit: unit.trim() || null,
         target_count: targetCount,
@@ -78,6 +136,7 @@ export default function UploadPage() {
       setMessage({ type: "ok", text: `등록 완료! "${studentName.trim()}" 학생의 오답이 ${targetCount}회 목표로 추가됐어요.` });
       setFile(null);
       setPreview("");
+      setCleanedUrl("");
     } catch (e) {
       const text = e instanceof Error ? e.message : "알 수 없는 오류가 났어요.";
       setMessage({ type: "err", text: `등록 실패: ${text}` });
@@ -90,7 +149,7 @@ export default function UploadPage() {
     <>
       <PageHeader eyebrow="학습" title="오답 등록" sub="틀린 문제를 사진으로 찍어 올리면 학습 목록에 추가됩니다." />
 
-      <div className="card" style={{ padding: 24, maxWidth: 520 }}>
+      <div className="card" style={{ padding: 24, maxWidth: 560 }}>
         <span className="label">문제 사진</span>
         <label className="upload-area" style={{ width: "100%", padding: 0, overflow: "hidden" }}>
           {preview ? (
@@ -106,6 +165,40 @@ export default function UploadPage() {
           <input type="file" accept="image/*" onChange={onPickFile} style={{ display: "none" }} />
         </label>
 
+        {/* 낙서 지우기 */}
+        {file && (
+          <div style={{ marginTop: 12 }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={cleanScribbles} disabled={cleaning}>
+              {cleaning ? "✨ 낙서 지우는 중… (10~20초)" : "✨ AI로 낙서 지우기"}
+            </button>
+            {cleanError && <div className="alert alert-err" style={{ marginTop: 10, marginBottom: 0 }}>❌ {cleanError}</div>}
+
+            {cleanedUrl && (
+              <div style={{ marginTop: 12 }}>
+                <div className="row" style={{ gap: 10, alignItems: "stretch" }}>
+                  <figure style={{ flex: 1, margin: 0 }}>
+                    <figcaption className="muted" style={{ fontSize: 12, marginBottom: 4, fontWeight: 700 }}>원본</figcaption>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={preview} alt="원본" style={{ width: "100%", borderRadius: 10, border: "1px solid var(--line)" }} />
+                  </figure>
+                  <figure style={{ flex: 1, margin: 0 }}>
+                    <figcaption style={{ fontSize: 12, marginBottom: 4, fontWeight: 700, color: "var(--done-ink)" }}>보정본 (낙서 제거)</figcaption>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={cleanedUrl} alt="보정본" style={{ width: "100%", borderRadius: 10, border: "2px solid var(--done-ink)" }} />
+                  </figure>
+                </div>
+                <label className="row" style={{ gap: 8, marginTop: 10, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+                  <input type="checkbox" checked={useCleaned} onChange={(e) => setUseCleaned(e.target.checked)} />
+                  보정본(낙서 지운 사진)을 사용하기
+                </label>
+                <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  ※ 숫자·식이 바뀌지 않았는지 꼭 확인하세요. 원본은 항상 함께 보관됩니다.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="field" style={{ marginTop: 20 }}>
           <label className="label">학생</label>
           {students.length > 0 && !typingName ? (
@@ -113,16 +206,12 @@ export default function UploadPage() {
               className="select"
               value={studentName}
               onChange={(e) => {
-                if (e.target.value === "__type__") {
-                  setTypingName(true);
-                  setStudentName("");
-                } else setStudentName(e.target.value);
+                if (e.target.value === "__type__") { setTypingName(true); setStudentName(""); }
+                else setStudentName(e.target.value);
               }}
             >
               <option value="">— 학생 선택 —</option>
-              {students.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              {students.map((s) => <option key={s} value={s}>{s}</option>)}
               <option value="__type__">✏️ 직접 입력…</option>
             </select>
           ) : (
