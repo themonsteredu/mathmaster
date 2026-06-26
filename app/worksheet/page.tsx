@@ -5,6 +5,11 @@ import { supabase } from "@/lib/supabase";
 import { DBProblem, problemImage, todayISO } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
 
+function md(iso: string) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 export default function WorksheetPage() {
   const [problems, setProblems] = useState<DBProblem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,14 +126,16 @@ export default function WorksheetPage() {
         <div key={pi} className="ws-page">
           <div className="ws-head">
             <span className="t">오답 복습 시험지</span>
-            <span style={{ fontSize: 12, color: "#555" }}>{who !== "전체" ? `${who} · ` : ""}이름 __________ / 날짜 ______</span>
+            <span style={{ fontSize: 13, color: "#222", fontWeight: 700 }}>
+              이름 {who !== "전체" ? who : "__________"} &nbsp;/&nbsp; 날짜 ______
+            </span>
           </div>
           <div className="ws-grid">
             {page.map((p, idx) => (
               <div key={p.id} className="ws-cell" style={{ height: cellH }}>
                 <div className="ws-cell-head">
                   <span className="ws-no">{pi * perPage + idx + 1}</span>
-                  <span>{p.student_name}</span>
+                  <span>오답일 {md(p.created_at)}</span>
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="ws-img" src={problemImage(p)} alt="문제" style={{ height: imgH }} />
