@@ -136,6 +136,7 @@ export default function WorksheetPage() {
                 <div className="ws-cell-head">
                   <span className="ws-no">{pi * perPage + idx + 1}</span>
                   <span>오답일 {md(p.created_at)}</span>
+                  <span style={{ marginLeft: "auto", color: "#aaa", fontWeight: 600 }}>{(p.attempts ?? 0) + 1}회차</span>
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="ws-img" src={problemImage(p)} alt="문제" style={{ height: imgH }} />
