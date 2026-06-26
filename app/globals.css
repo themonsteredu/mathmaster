@@ -731,3 +731,108 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------- 시험지(A4) ---------------- */
+.ws-page {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10mm;
+  margin: 0 auto 18px;
+  width: 210mm;
+  max-width: 100%;
+}
+.ws-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.ws-head .t {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 700;
+}
+.ws-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ws-cell {
+  border: 1px solid #cfcfcf;
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  break-inside: avoid;
+}
+.ws-cell-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  color: #444;
+  margin-bottom: 6px;
+}
+.ws-no {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.ws-img {
+  width: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+.ws-lines {
+  flex: 1;
+  margin-top: 6px;
+  border-top: 1px dashed #ddd;
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 26px,
+    #e6e6e6 27px
+  );
+}
+
+@media print {
+  .appbar,
+  .sidebar,
+  .mobile-nav,
+  .no-print {
+    display: none !important;
+  }
+  .app-layout,
+  .main {
+    display: block;
+  }
+  .content {
+    max-width: none;
+    padding: 0;
+  }
+  body {
+    background: #fff;
+  }
+  .ws-page {
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    width: auto;
+  }
+  .ws-page + .ws-page {
+    page-break-before: always;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}

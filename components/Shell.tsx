@@ -12,6 +12,7 @@ import {
   IconTeacher,
   IconSettings,
   IconLogout,
+  IconBook,
   type IconType,
 } from "@/components/icons";
 
@@ -23,7 +24,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const [counts, setCounts] = useState<{ box: number; students: number }>({ box: 0, students: 0 });
 
   const role: "student" | "teacher" =
-    pathname.startsWith("/admin") || pathname.startsWith("/students") ? "teacher" : "student";
+    pathname.startsWith("/admin") || pathname.startsWith("/students") || pathname.startsWith("/worksheet")
+      ? "teacher"
+      : "student";
 
   useEffect(() => {
     (async () => {
@@ -42,6 +45,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   ];
   const teacherNav: NavItem[] = [
     { href: "/admin", label: "대시보드", icon: IconDashboard },
+    { href: "/worksheet", label: "시험지 만들기", icon: IconBook },
     { href: "/students", label: "학생 관리", icon: IconStudent, count: counts.students },
   ];
   const nav = role === "teacher" ? teacherNav : studentNav;
