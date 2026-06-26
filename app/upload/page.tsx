@@ -7,235 +7,195 @@ import { nextDue } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
 import { IconCamera } from "@/components/icons";
 
+type Item = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  cleanedDataUrl?: string;
+  useCleaned: boolean;
+  cleaning: boolean;
+  cleanError?: string;
+};
+
 function fileToBase64(file: File): Promise<{ data: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
-    r.onload = () => {
-      const s = r.result as string;
-      resolve({ data: s.split(",")[1], mimeType: file.type || "image/jpeg" });
-    };
+    r.onload = () => resolve({ data: (r.result as string).split(",")[1], mimeType: file.type || "image/jpeg" });
     r.onerror = reject;
     r.readAsDataURL(file);
   });
 }
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  const res = await fetch(dataUrl);
-  return res.blob();
+  return (await fetch(dataUrl)).blob();
 }
 
 export default function UploadPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState("");
-
-  // 낙서 지우기 관련
-  const [cleaning, setCleaning] = useState(false);
-  const [cleanedUrl, setCleanedUrl] = useState(""); // data URL (미리보기 + 업로드용)
-  const [useCleaned, setUseCleaned] = useState(true);
-  const [cleanError, setCleanError] = useState("");
-
+  const [items, setItems] = useState<Item[]>([]);
   const [students, setStudents] = useState<string[]>([]);
   const [studentName, setStudentName] = useState("");
   const [typingName, setTypingName] = useState(false);
-
-  const [subjects, setSubjects] = useState<string[]>([]);
-  const [units, setUnits] = useState<string[]>([]);
-  const [subject, setSubject] = useState("");
-  const [unit, setUnit] = useState("");
-
   const [targetCount, setTargetCount] = useState(5);
-  const [uploadedBy, setUploadedBy] = useState("선생님");
 
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   useEffect(() => {
-    supabase
-      .from("students")
-      .select("name")
-      .order("name")
-      .then(({ data }) => setStudents((data ?? []).map((s) => s.name)));
-    supabase
-      .from("wrong_problems")
-      .select("subject, unit")
-      .then(({ data }) => {
-        const subs = new Set<string>();
-        const uns = new Set<string>();
-        (data ?? []).forEach((r) => {
-          if (r.subject) subs.add(r.subject);
-          if (r.unit) uns.add(r.unit);
-        });
-        setSubjects([...subs]);
-        setUnits([...uns]);
-      });
+    supabase.from("students").select("name").order("name").then(({ data }) => setStudents((data ?? []).map((s) => s.name)));
   }, []);
 
-  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0] ?? null;
-    setFile(f);
-    setPreview(f ? URL.createObjectURL(f) : "");
-    setCleanedUrl("");
-    setCleanError("");
+  function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const next = files.map((f) => ({ id: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), useCleaned: true, cleaning: false }));
+    setItems((prev) => [...prev, ...next]);
+    e.target.value = "";
   }
 
-  async function cleanScribbles() {
-    if (!file) return;
-    setCleaning(true);
-    setCleanError("");
+  function removeItem(id: string) {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  }
+  function patch(id: string, p: Partial<Item>) {
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...p } : i)));
+  }
+
+  async function cleanOne(it: Item) {
+    patch(it.id, { cleaning: true, cleanError: undefined });
     try {
-      const { data, mimeType } = await fileToBase64(file);
-      const res = await fetch("/api/clean-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data, mimeType }),
-      });
+      const { data, mimeType } = await fileToBase64(it.file);
+      const res = await fetch("/api/clean-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data, mimeType }) });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "처리 실패");
-      setCleanedUrl(`data:${j.mimeType};base64,${j.image}`);
-      setUseCleaned(true);
+      patch(it.id, { cleanedDataUrl: `data:${j.mimeType};base64,${j.image}`, useCleaned: true });
     } catch (e) {
-      setCleanError(e instanceof Error ? e.message : "낙서 지우기에 실패했어요.");
+      patch(it.id, { cleanError: e instanceof Error ? e.message : "낙서 지우기 실패" });
     } finally {
-      setCleaning(false);
+      patch(it.id, { cleaning: false });
     }
   }
 
-  async function onSubmit() {
+  async function cleanAll() {
+    for (const it of items) if (!it.cleanedDataUrl) await cleanOne(it);
+  }
+
+  async function submitAll() {
     setMessage(null);
-    if (!file) return setMessage({ type: "err", text: "문제 사진을 먼저 선택해 주세요." });
+    if (items.length === 0) return setMessage({ type: "err", text: "사진을 먼저 추가해 주세요." });
     if (!studentName.trim()) return setMessage({ type: "err", text: "학생을 선택하거나 입력해 주세요." });
 
     setBusy(true);
     try {
-      // 1) 원본은 항상 저장
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, file);
-      if (upErr) throw new Error("사진 업로드 실패: " + upErr.message);
-      const { data: pub } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+      const rows: Record<string, unknown>[] = [];
+      let n = 0;
+      for (const it of items) {
+        n++;
+        setProgress(`사진 업로드 중… (${n}/${items.length})`);
+        const ext = it.file.name.split(".").pop() || "jpg";
+        const path = `${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, it.file);
+        if (upErr) throw new Error("사진 업로드 실패: " + upErr.message);
+        const problemUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
 
-      // 2) 보정본을 쓰기로 했으면 따로 저장
-      let cleanedUrlStored: string | null = null;
-      if (cleanedUrl && useCleaned) {
-        const blob = await dataUrlToBlob(cleanedUrl);
-        const cpath = `cleaned/${crypto.randomUUID()}.png`;
-        const { error: ce } = await supabase.storage.from(PHOTO_BUCKET).upload(cpath, blob, { contentType: "image/png" });
-        if (ce) throw new Error("보정본 업로드 실패: " + ce.message);
-        cleanedUrlStored = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(cpath).data.publicUrl;
+        let cleanedUrl: string | null = null;
+        if (it.useCleaned && it.cleanedDataUrl) {
+          const blob = await dataUrlToBlob(it.cleanedDataUrl);
+          const cpath = `cleaned/${crypto.randomUUID()}.png`;
+          const { error: ce } = await supabase.storage.from(PHOTO_BUCKET).upload(cpath, blob, { contentType: "image/png" });
+          if (ce) throw new Error("보정본 업로드 실패: " + ce.message);
+          cleanedUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(cpath).data.publicUrl;
+        }
+
+        rows.push({
+          student_name: studentName.trim(),
+          problem_image_url: problemUrl,
+          cleaned_image_url: cleanedUrl,
+          target_count: targetCount,
+          uploaded_by: "선생님",
+          attempts: 0,
+          due_date: nextDue(0),
+          status: "대기",
+        });
       }
 
-      const base: Record<string, unknown> = {
-        student_name: studentName.trim(),
-        problem_image_url: pub.publicUrl,
-        subject: subject.trim() || null,
-        unit: unit.trim() || null,
-        target_count: targetCount,
-        uploaded_by: uploadedBy,
-      };
-      // 새 모델: 첫 출제 예정일을 잡고 '대기' 상태로 등록
-      const full: Record<string, unknown> = {
-        ...base,
-        cleaned_image_url: cleanedUrlStored,
-        attempts: 0,
-        due_date: nextDue(0),
-        status: "대기",
-      };
-
-      let { error: insErr } = await supabase.from("wrong_problems").insert(full);
-
-      // 새 칸(보정본/스케줄)이 아직 없으면, 기본 정보만으로라도 등록
+      setProgress("저장 중…");
+      let { error: insErr } = await supabase.from("wrong_problems").insert(rows);
       if (insErr && /cleaned_image_url|attempts|due_date|column/.test(insErr.message || "")) {
+        const base = rows.map((r) => ({
+          student_name: r.student_name,
+          problem_image_url: r.problem_image_url,
+          target_count: r.target_count,
+          uploaded_by: r.uploaded_by,
+        }));
         ({ error: insErr } = await supabase.from("wrong_problems").insert(base));
         if (!insErr) {
-          setMessage({
-            type: "ok",
-            text: `등록은 됐어요! 다만 새 기능용 칸이 아직 없어 일부(보정본/출제 일정)는 저장되지 않았어요. Supabase에서 안내된 SQL을 실행하면 다음부터 모두 저장돼요.`,
-          });
-          setFile(null);
-          setPreview("");
-          setCleanedUrl("");
+          setMessage({ type: "ok", text: `${rows.length}개 등록됐어요! 다만 새 기능용 칸이 아직 없어 일부(보정본/출제 일정)는 저장 안 됨. Supabase에 안내된 SQL을 실행하면 다음부턴 모두 저장돼요.` });
+          setItems([]);
           return;
         }
       }
       if (insErr) throw new Error(insErr.message);
 
-      setMessage({ type: "ok", text: `등록 완료! "${studentName.trim()}" 학생의 오답을 추가했어요. ${nextDue(0)}에 첫 출제 예정이에요.` });
-      setFile(null);
-      setPreview("");
-      setCleanedUrl("");
+      setMessage({ type: "ok", text: `${rows.length}개 오답을 등록했어요! "${studentName.trim()}" 학생, ${nextDue(0)}에 첫 출제 예정이에요.` });
+      setItems([]);
     } catch (e) {
-      const text =
-        e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : "알 수 없는 오류가 났어요.";
-      setMessage({ type: "err", text: `등록 실패: ${text}` });
+      setMessage({ type: "err", text: `등록 실패: ${e instanceof Error ? e.message : "알 수 없는 오류"}` });
     } finally {
       setBusy(false);
+      setProgress("");
     }
   }
 
+  const anyCleanable = items.some((i) => !i.cleanedDataUrl);
+
   return (
     <>
-      <PageHeader eyebrow="학습" title="오답 등록" sub="틀린 문제를 사진으로 찍어 올리면 학습 목록에 추가됩니다." />
+      <PageHeader eyebrow="등록" title="오답 등록" sub="틀린 문제를 여러 장 한 번에 올리세요. 한 학생의 오답을 모아서 등록합니다." />
 
-      <div className="card" style={{ padding: 24, maxWidth: 560 }}>
-        <span className="label">문제 사진</span>
-        <label className="upload-area" style={{ width: "100%", padding: 0, overflow: "hidden" }}>
-          {preview ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview} alt="미리보기" style={{ width: "100%", maxHeight: 280, objectFit: "contain" }} />
-          ) : (
-            <>
-              <span style={{ color: "var(--muted)", marginBottom: 8 }}><IconCamera size={34} /></span>
-              <span style={{ fontWeight: 700, fontSize: 15 }}>사진 찍기 또는 파일 선택</span>
-              <span className="muted" style={{ fontSize: 13, marginTop: 4 }}>문제가 잘 보이게 찍어주세요</span>
-            </>
-          )}
-          <input type="file" accept="image/*" onChange={onPickFile} style={{ display: "none" }} />
+      <div className="card" style={{ padding: 24, maxWidth: 620 }}>
+        {/* 사진 추가 */}
+        <span className="label">문제 사진 (여러 장 가능)</span>
+        <label className="upload-area" style={{ width: "100%" }}>
+          <span style={{ color: "var(--muted)", marginBottom: 8 }}><IconCamera size={34} /></span>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>사진 찍기 / 여러 장 선택</span>
+          <span className="muted" style={{ fontSize: 13, marginTop: 4 }}>한 번에 여러 장 골라도 돼요</span>
+          <input type="file" accept="image/*" multiple onChange={onPickFiles} style={{ display: "none" }} />
         </label>
 
-        {/* 낙서 지우기 */}
-        {file && (
-          <div style={{ marginTop: 12 }}>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={cleanScribbles} disabled={cleaning}>
-              {cleaning ? "✨ 낙서 지우는 중… (10~20초)" : "✨ AI로 낙서 지우기"}
-            </button>
-            {cleanError && <div className="alert alert-err" style={{ marginTop: 10, marginBottom: 0 }}>❌ {cleanError}</div>}
-
-            {cleanedUrl && (
-              <div style={{ marginTop: 12 }}>
-                <div className="row" style={{ gap: 10, alignItems: "stretch" }}>
-                  <figure style={{ flex: 1, margin: 0 }}>
-                    <figcaption className="muted" style={{ fontSize: 12, marginBottom: 4, fontWeight: 700 }}>원본</figcaption>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={preview} alt="원본" style={{ width: "100%", borderRadius: 10, border: "1px solid var(--line)" }} />
-                  </figure>
-                  <figure style={{ flex: 1, margin: 0 }}>
-                    <figcaption style={{ fontSize: 12, marginBottom: 4, fontWeight: 700, color: "var(--done-ink)" }}>보정본 (낙서 제거)</figcaption>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={cleanedUrl} alt="보정본" style={{ width: "100%", borderRadius: 10, border: "2px solid var(--done-ink)" }} />
-                  </figure>
+        {items.length > 0 && (
+          <>
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 14, marginBottom: 8 }}>
+              <span className="label" style={{ margin: 0 }}>추가된 사진 {items.length}장</span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={cleanAll} disabled={!anyCleanable || items.some((i) => i.cleaning)}>
+                ✨ 전체 낙서 지우기
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
+              {items.map((it) => (
+                <div key={it.id} className="card" style={{ padding: 8 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={it.cleanedDataUrl && it.useCleaned ? it.cleanedDataUrl : it.previewUrl} alt="" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 8, background: "var(--bg-soft)" }} />
+                  {it.cleaning ? (
+                    <div className="muted" style={{ fontSize: 11, textAlign: "center", marginTop: 6 }}>지우는 중…</div>
+                  ) : it.cleanedDataUrl ? (
+                    <label className="row" style={{ gap: 5, fontSize: 11, marginTop: 6, justifyContent: "center", cursor: "pointer" }}>
+                      <input type="checkbox" checked={it.useCleaned} onChange={(e) => patch(it.id, { useCleaned: e.target.checked })} />
+                      보정본 사용
+                    </label>
+                  ) : (
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", marginTop: 6, fontSize: 11 }} onClick={() => cleanOne(it)}>✨ 낙서 지우기</button>
+                  )}
+                  {it.cleanError && <div style={{ fontSize: 10, color: "var(--danger-ink)", marginTop: 4 }}>{it.cleanError}</div>}
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", color: "var(--danger-ink)", fontSize: 11 }} onClick={() => removeItem(it.id)}>삭제</button>
                 </div>
-                <label className="row" style={{ gap: 8, marginTop: 10, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
-                  <input type="checkbox" checked={useCleaned} onChange={(e) => setUseCleaned(e.target.checked)} />
-                  보정본(낙서 지운 사진)을 사용하기
-                </label>
-                <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  ※ 숫자·식이 바뀌지 않았는지 꼭 확인하세요. 원본은 항상 함께 보관됩니다.
-                </p>
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          </>
         )}
 
+        {/* 학생 */}
         <div className="field" style={{ marginTop: 20 }}>
           <label className="label">학생</label>
           {students.length > 0 && !typingName ? (
-            <select
-              className="select"
-              value={studentName}
-              onChange={(e) => {
-                if (e.target.value === "__type__") { setTypingName(true); setStudentName(""); }
-                else setStudentName(e.target.value);
-              }}
-            >
+            <select className="select" value={studentName} onChange={(e) => { if (e.target.value === "__type__") { setTypingName(true); setStudentName(""); } else setStudentName(e.target.value); }}>
               <option value="">— 학생 선택 —</option>
               {students.map((s) => <option key={s} value={s}>{s}</option>)}
               <option value="__type__">✏️ 직접 입력…</option>
@@ -249,26 +209,12 @@ export default function UploadPage() {
             </p>
           )}
           {typingName && students.length > 0 && (
-            <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6, paddingLeft: 0 }} onClick={() => { setTypingName(false); setStudentName(""); }}>
-              ← 목록에서 선택
-            </button>
+            <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6, paddingLeft: 0 }} onClick={() => { setTypingName(false); setStudentName(""); }}>← 목록에서 선택</button>
           )}
         </div>
 
-        <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
-          <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-            <label className="label">과목</label>
-            <input className="input" list="subject-list" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="예: 수학" />
-            <datalist id="subject-list">{subjects.map((s) => <option key={s} value={s} />)}</datalist>
-          </div>
-          <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-            <label className="label">단원</label>
-            <input className="input" list="unit-list" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="예: 이차방정식" />
-            <datalist id="unit-list">{units.map((u) => <option key={u} value={u} />)}</datalist>
-          </div>
-        </div>
-
-        <div className="field" style={{ marginTop: 16 }}>
+        {/* 최대 반복 */}
+        <div className="field">
           <label className="label">최대 반복 횟수 (며칠 간격으로 최대 몇 번 출제할까요?)</label>
           <div className="stepper">
             <button type="button" className="step-btn" onClick={() => setTargetCount((n) => Math.max(1, n - 1))}>−</button>
@@ -279,19 +225,8 @@ export default function UploadPage() {
           <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>1→3→7→14→30일 간격으로 재출제하고, 끝까지 못 풀면 「경고 문항」으로 남겨요.</p>
         </div>
 
-        <div className="field">
-          <label className="label">올린 사람</label>
-          <div className="row" style={{ gap: 8 }}>
-            {["선생님", "학생"].map((who) => (
-              <button key={who} type="button" className={`btn ${uploadedBy === who ? "btn-primary" : "btn-secondary"}`} style={{ flex: 1 }} onClick={() => setUploadedBy(who)}>
-                {who}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button className="btn btn-primary btn-lg btn-block" style={{ marginTop: 12 }} onClick={onSubmit} disabled={busy}>
-          {busy ? "올리는 중…" : "오답 등록하기"}
+        <button className="btn btn-primary btn-lg btn-block" style={{ marginTop: 12 }} onClick={submitAll} disabled={busy}>
+          {busy ? progress || "올리는 중…" : `오답 ${items.length || ""}개 등록하기`}
         </button>
 
         {message && <div className={`alert ${message.type === "ok" ? "alert-ok" : "alert-err"}`} style={{ marginTop: 16, marginBottom: 0 }}>{message.type === "ok" ? "✅ " : "❌ "}{message.text}</div>}

@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { DBProblem, problemTitle, problemTopic, problemImage, nextDue, todayISO } from "@/lib/data";
+import { DBProblem, problemImage, nextDue, todayISO } from "@/lib/data";
+
+function md(iso: string) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
 import { PageHeader, StatCard, SectionH } from "@/components/ui";
 import { IconChevronLeft } from "@/components/icons";
 
@@ -29,7 +34,7 @@ export default function StudentDetail() {
   }, [name]);
 
   async function complete(p: DBProblem) {
-    if (!confirm(`"${problemTitle(p)}" 문항을 완료 처리하고 삭제할까요?\n(다시 출제되지 않아요)`)) return;
+    if (!confirm(`이 문항을 완료 처리하고 삭제할까요?\n(다시 출제되지 않아요)`)) return;
     setProblems((prev) => prev.filter((x) => x.id !== p.id));
     await supabase.from("wrong_problems").delete().eq("id", p.id);
   }
@@ -86,8 +91,7 @@ export default function StudentDetail() {
                     <div className="row" style={{ gap: 8, marginBottom: 5 }}>
                       {isWarn ? <span className="badge badge-study" style={{ background: "var(--danger-soft)", color: "var(--danger-ink)" }}>⚠️ 경고</span> : <span className="badge badge-study">대기</span>}
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{problemTitle(p)}</div>
-                    <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>{problemTopic(p)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>오답 · 등록 {md(p.created_at)}</div>
                     <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                       {isWarn
                         ? `최대 반복(${p.target_count}회) 도달 — 끝까지 못 푼 문항이에요`

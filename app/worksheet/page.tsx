@@ -2,38 +2,33 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { DBProblem, problemTitle, problemTopic, problemImage, todayISO } from "@/lib/data";
+import { DBProblem, problemImage, todayISO } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
 
 export default function WorksheetPage() {
   const [problems, setProblems] = useState<DBProblem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [until, setUntil] = useState(todayISO()); // 이 날짜까지 '출제할 때가 된' 오답
+  const [until, setUntil] = useState(todayISO());
   const [who, setWho] = useState("전체");
   const [perPage, setPerPage] = useState<4 | 6>(4);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    supabase
-      .from("wrong_problems")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setProblems((data as DBProblem[]) ?? []);
-        setLoading(false);
-      });
+    supabase.from("wrong_problems").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+      setProblems((data as DBProblem[]) ?? []);
+      setLoading(false);
+    });
   }, []);
 
   const names = ["전체", ...Array.from(new Set(problems.map((p) => p.student_name)))];
 
-  // 출제 대상 = 경고/완료가 아니고, 출제 예정일(due_date)이 기준일 이전인 문항
   const due = useMemo(() => {
     return problems.filter((p) => {
       if (p.status === "경고" || p.status === "완료") return false;
       if (who !== "전체" && p.student_name !== who) return false;
-      if (!p.due_date) return true; // 일정이 없는(옛) 문항은 항상 출제 대상
+      if (!p.due_date) return true;
       return p.due_date <= until;
     });
   }, [problems, until, who]);
@@ -56,8 +51,9 @@ export default function WorksheetPage() {
   const pages: DBProblem[][] = [];
   for (let i = 0; i < chosen.length; i += perPage) pages.push(chosen.slice(i, i + perPage));
 
-  const imgMax = perPage === 4 ? "52mm" : "34mm";
-  const cellMin = perPage === 4 ? "120mm" : "80mm";
+  // 칸 높이·사진 높이 고정 (모든 칸 동일)
+  const cellH = perPage === 4 ? "128mm" : "84mm";
+  const imgH = perPage === 4 ? "46mm" : "30mm";
 
   return (
     <>
@@ -67,9 +63,7 @@ export default function WorksheetPage() {
           title="오답 시험지 만들기"
           sub="출제할 때가 된 오답(낙서 제거본)이 A4 2단으로 정리돼요. 인쇄하거나 PDF로 저장하세요."
           actions={
-            <button className="btn btn-primary" onClick={() => window.print()} disabled={chosen.length === 0}>
-              🖨️ 인쇄 / PDF 저장
-            </button>
+            <button className="btn btn-primary" onClick={() => window.print()} disabled={chosen.length === 0}>🖨️ 인쇄 / PDF 저장</button>
           }
         />
 
@@ -88,7 +82,6 @@ export default function WorksheetPage() {
               </div>
             </div>
           </div>
-
           {names.length > 2 && (
             <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 14 }}>
               {names.map((n) => (
@@ -111,8 +104,8 @@ export default function WorksheetPage() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={problemImage(p)} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, background: "var(--bg-soft)" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{problemTitle(p)} <span className="muted" style={{ fontWeight: 400 }}>· {p.student_name}</span></div>
-                  <div className="muted" style={{ fontSize: 12 }}>{problemTopic(p)}{p.due_date ? ` · 출제일 ${p.due_date}` : ""}{p.attempts ? ` · ${p.attempts + 1}회차` : ""}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{p.student_name}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{p.due_date ? `출제일 ${p.due_date}` : "출제 대기"}{p.attempts ? ` · ${p.attempts + 1}회차` : ""}</div>
                 </div>
               </label>
             ))}
@@ -128,20 +121,17 @@ export default function WorksheetPage() {
         <div key={pi} className="ws-page">
           <div className="ws-head">
             <span className="t">오답 복습 시험지</span>
-            <span style={{ fontSize: 12, color: "#555" }}>
-              {who !== "전체" ? `${who} · ` : ""}이름 __________ / 날짜 ______
-            </span>
+            <span style={{ fontSize: 12, color: "#555" }}>{who !== "전체" ? `${who} · ` : ""}이름 __________ / 날짜 ______</span>
           </div>
           <div className="ws-grid">
             {page.map((p, idx) => (
-              <div key={p.id} className="ws-cell" style={{ minHeight: cellMin }}>
+              <div key={p.id} className="ws-cell" style={{ height: cellH }}>
                 <div className="ws-cell-head">
                   <span className="ws-no">{pi * perPage + idx + 1}</span>
                   <span>{p.student_name}</span>
-                  <span style={{ color: "#999" }}>· {problemTopic(p)}</span>
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="ws-img" src={problemImage(p)} alt="문제" style={{ maxHeight: imgMax }} />
+                <img className="ws-img" src={problemImage(p)} alt="문제" style={{ height: imgH }} />
                 <div className="ws-lines" />
               </div>
             ))}
