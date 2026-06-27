@@ -50,7 +50,9 @@ export default function StudentsPage() {
   }
 
   async function removeStudent(s: DBStudent) {
-    if (!confirm(`"${s.name}" 학생을 명단에서 지울까요?\n(등록된 오답 기록은 그대로 남아요)`)) return;
+    if (!confirm(`"${s.name}" 학생을 삭제할까요?\n이 학생의 오답 문항도 모두 함께 삭제됩니다. (되돌릴 수 없어요)`)) return;
+    // 이 학생의 오답 문항 먼저 삭제 (풀이 사진은 연결되어 자동 삭제)
+    await supabase.from("wrong_problems").delete().eq("student_name", s.name);
     const { error } = await supabase.from("students").delete().eq("id", s.id);
     if (error) return setError(error.message);
     load();

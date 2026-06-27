@@ -42,6 +42,21 @@ export default function UploadPage() {
   const [targetCount, setTargetCount] = useState(5);
   const [focusedAnswerId, setFocusedAnswerId] = useState<string | null>(null);
   const [cropId, setCropId] = useState<string | null>(null);
+  const [pageSrc, setPageSrc] = useState<string | null>(null);
+
+  function onPickPage(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) setPageSrc(URL.createObjectURL(f));
+    e.target.value = "";
+  }
+  async function addCrop(dataUrl: string) {
+    const blob = await dataUrlToBlob(dataUrl);
+    const file = new File([blob], `crop-${crypto.randomUUID()}.png`, { type: "image/png" });
+    setItems((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), file, previewUrl: dataUrl, answer: "", unit: "", detecting: false, useCleaned: false, cleaning: false },
+    ]);
+  }
 
   function insertSymbol(sym: string) {
     if (!focusedAnswerId) return;
@@ -204,6 +219,11 @@ export default function UploadPage() {
           <input type="file" accept="image/*" multiple onChange={onPickFiles} style={{ display: "none" }} />
         </label>
 
+        <label className="btn btn-secondary btn-sm" style={{ marginTop: 10, cursor: "pointer", display: "inline-flex" }}>
+          📄 문제집 한 페이지에서 여러 문항 자르기
+          <input type="file" accept="image/*" onChange={onPickPage} style={{ display: "none" }} />
+        </label>
+
         {items.length > 0 && (
           <>
             <div className="row" style={{ justifyContent: "space-between", marginTop: 14, marginBottom: 8 }}>
@@ -316,7 +336,71 @@ export default function UploadPage() {
           />
         );
       })()}
+
+      {pageSrc && <MultiCropModal src={pageSrc} onAdd={addCrop} onClose={() => setPageSrc(null)} />}
     </>
+  );
+}
+
+function MultiCropModal({ src, onAdd, onClose }: { src: string; onAdd: (dataUrl: string) => void | Promise<void>; onClose: () => void }) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [rect, setRect] = useState<Rect | null>(null);
+  const [start, setStart] = useState<{ x: number; y: number } | null>(null);
+  const [count, setCount] = useState(0);
+
+  function pos(e: React.PointerEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return { x: Math.max(0, Math.min(e.clientX - r.left, r.width)), y: Math.max(0, Math.min(e.clientY - r.top, r.height)) };
+  }
+  function down(e: React.PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const p = pos(e);
+    setStart(p);
+    setRect({ x: p.x, y: p.y, w: 0, h: 0 });
+  }
+  function move(e: React.PointerEvent) {
+    if (!start) return;
+    const p = pos(e);
+    setRect({ x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) });
+  }
+  function up() {
+    setStart(null);
+  }
+  function addCurrent() {
+    const img = imgRef.current;
+    if (!img || !rect || rect.w < 8 || rect.h < 8) return;
+    const sx = img.naturalWidth / img.clientWidth;
+    const sy = img.naturalHeight / img.clientHeight;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(rect.w * sx));
+    canvas.height = Math.max(1, Math.round(rect.h * sy));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy, 0, 0, canvas.width, canvas.height);
+    onAdd(canvas.toDataURL("image/png"));
+    setCount((c) => c + 1);
+    setRect(null);
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(15,23,42,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div className="card" style={{ padding: 16, maxWidth: 620, width: "100%", maxHeight: "92vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>한 페이지에서 여러 문항 자르기</div>
+        <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>문제 하나를 드래그로 감싼 뒤 <b>「이 영역 문항 추가」</b>를 누르세요. 여러 번 반복해서 한 페이지를 여러 문항으로 나눌 수 있어요.</p>
+        <div style={{ position: "relative", touchAction: "none", userSelect: "none" }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img ref={imgRef} src={src} alt="" draggable={false} style={{ width: "100%", display: "block", borderRadius: 8 }} />
+          {rect && <div style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.w, height: rect.h, border: "2px solid var(--accent)", background: "rgba(63,110,165,0.18)", pointerEvents: "none" }} />}
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 14, justifyContent: "space-between", flexWrap: "wrap" }}>
+          <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>추가됨: {count}문항</span>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn btn-secondary" onClick={addCurrent} disabled={!rect || rect.w < 8}>✂️ 이 영역 문항 추가</button>
+            <button className="btn btn-primary" onClick={onClose}>완료</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
