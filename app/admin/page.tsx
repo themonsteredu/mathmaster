@@ -141,7 +141,7 @@ export default function TeacherDashboard() {
                 <div className="row" style={{ gap: 8 }}>
                   <Avatar name={p.student_name} />
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{p.student_name}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{p.seq != null ? `${p.seq}번 · ` : ""}{p.student_name}</div>
                     <div className="muted" style={{ fontSize: 12 }}>{p.attempts + 1}/{p.target_count}회차</div>
                   </div>
                 </div>

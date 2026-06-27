@@ -84,6 +84,17 @@ export default function UploadPage() {
 
     setBusy(true);
     try {
+      // 이 학생의 다음 고정 번호 구하기 (기존 최댓값 + 1)
+      let nextSeq = 1;
+      const { data: mx, error: mxErr } = await supabase
+        .from("wrong_problems")
+        .select("seq")
+        .eq("student_name", studentName.trim())
+        .not("seq", "is", null)
+        .order("seq", { ascending: false })
+        .limit(1);
+      if (!mxErr) nextSeq = ((mx?.[0]?.seq as number) ?? 0) + 1;
+
       const rows: Record<string, unknown>[] = [];
       let n = 0;
       for (const it of items) {
@@ -108,6 +119,7 @@ export default function UploadPage() {
           student_name: studentName.trim(),
           problem_image_url: problemUrl,
           cleaned_image_url: cleanedUrl,
+          seq: nextSeq + (n - 1),
           target_count: targetCount,
           uploaded_by: "선생님",
           attempts: 0,

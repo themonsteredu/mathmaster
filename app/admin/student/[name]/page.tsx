@@ -91,7 +91,7 @@ export default function StudentDetail() {
                     <div className="row" style={{ gap: 8, marginBottom: 5 }}>
                       {isWarn ? <span className="badge badge-study" style={{ background: "var(--danger-soft)", color: "var(--danger-ink)" }}>⚠️ 경고</span> : <span className="badge badge-study">대기</span>}
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>오답 · 등록 {md(p.created_at)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{p.seq != null ? `${p.seq}번 · ` : ""}등록 {md(p.created_at)}</div>
                     <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                       {isWarn
                         ? `최대 반복(${p.target_count}회) 도달 — 끝까지 못 푼 문항이에요`

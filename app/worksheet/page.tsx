@@ -52,7 +52,9 @@ export default function WorksheetPage() {
     });
   }
 
-  const chosen = due.filter((p) => selected.has(p.id));
+  const chosen = due
+    .filter((p) => selected.has(p.id))
+    .sort((a, b) => (a.seq ?? 1e9) - (b.seq ?? 1e9));
   const pages: DBProblem[][] = [];
   for (let i = 0; i < chosen.length; i += perPage) pages.push(chosen.slice(i, i + perPage));
 
@@ -134,7 +136,7 @@ export default function WorksheetPage() {
             {page.map((p, idx) => (
               <div key={p.id} className="ws-cell" style={{ height: cellH }}>
                 <div className="ws-cell-head">
-                  <span className="ws-no">{pi * perPage + idx + 1}</span>
+                  <span className="ws-no">{p.seq ?? pi * perPage + idx + 1}</span>
                   <span>오답일 {md(p.created_at)}</span>
                   <span style={{ marginLeft: "auto", color: "#aaa", fontWeight: 600 }}>{(p.attempts ?? 0) + 1}회차</span>
                 </div>

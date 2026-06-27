@@ -75,3 +75,19 @@ alter table wrong_problems add column if not exists cleaned_image_url text;
 -- ============================================================
 alter table wrong_problems add column if not exists attempts integer not null default 0;
 alter table wrong_problems add column if not exists due_date date;
+
+-- ============================================================
+-- [추가] 학생별 고정 문항 번호(seq) — 삭제돼도 번호 유지
+-- 아래 전체를 SQL Editor에 붙여넣고 RUN 하세요.
+-- (기존 문항들도 학생별 등록순 1,2,3...으로 번호가 채워집니다)
+-- ============================================================
+alter table wrong_problems add column if not exists seq integer;
+
+with ranked as (
+  select id, row_number() over (partition by student_name order by created_at) as rn
+  from wrong_problems
+)
+update wrong_problems w
+set seq = r.rn
+from ranked r
+where w.id = r.id and w.seq is null;
