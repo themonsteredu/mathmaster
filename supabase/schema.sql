@@ -97,3 +97,9 @@ where w.id = r.id and w.seq is null;
 -- 아래 한 줄을 SQL Editor에 붙여넣고 RUN 하세요.
 -- ============================================================
 alter table wrong_problems add column if not exists answer text;
+
+-- ============================================================
+-- [추가] 학생 풀이 제출 시각 (디지털 풀이 업로드용)
+-- 아래 한 줄을 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+alter table wrong_problems add column if not exists last_submitted_at timestamptz;

@@ -17,6 +17,13 @@ export default function GalleryPage() {
   const [who, setWho] = useState("전체");
   const [stat, setStat] = useState<"전체" | "대기" | "경고">("전체");
   const [zoom, setZoom] = useState<DBProblem | null>(null);
+  const [sols, setSols] = useState<Record<string, { id: string; solution_image_url: string; solved_at: string }[]>>({});
+
+  async function loadSols(pid: string) {
+    if (sols[pid]) return;
+    const { data } = await supabase.from("solution_logs").select("*").eq("problem_id", pid).order("solved_at", { ascending: true });
+    setSols((prev) => ({ ...prev, [pid]: (data as { id: string; solution_image_url: string; solved_at: string }[]) ?? [] }));
+  }
 
   async function load() {
     const [{ data: probs }, { data: studs }] = await Promise.all([
@@ -42,7 +49,9 @@ export default function GalleryPage() {
   async function retry(p: DBProblem) {
     const a = p.attempts + 1;
     const warned = a >= p.target_count;
-    const patch = warned ? { attempts: a, status: "경고", due_date: null as string | null } : { attempts: a, status: "대기", due_date: nextDue(a) };
+    const patch = warned
+      ? { attempts: a, status: "경고", due_date: null as string | null, last_submitted_at: null as string | null }
+      : { attempts: a, status: "대기", due_date: nextDue(a), last_submitted_at: null as string | null };
     setProblems((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...patch } : x)));
     setZoom((z) => (z && z.id === p.id ? { ...z, ...patch } : z));
     await supabase.from("wrong_problems").update(patch).eq("id", p.id);
@@ -114,6 +123,7 @@ export default function GalleryPage() {
                       <span style={{ fontWeight: 800, fontSize: 13 }}>{p.seq != null ? `${p.seq}번` : "—"}</span>
                       {warn ? <span className="chip chip-danger" style={{ padding: "2px 7px" }}><span className="dot" />경고</span> : <span className="muted" style={{ fontSize: 12 }}>{p.attempts + 1}회차</span>}
                     </div>
+                    {p.last_submitted_at && <div className="chip chip-accent" style={{ marginTop: 5, padding: "2px 8px" }}><span className="dot" />🆕 새 풀이</div>}
                     {p.answer && <div style={{ fontSize: 12, color: "var(--done-ink)", fontWeight: 700, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>정답: {p.answer}</div>}
                   </div>
                 );
@@ -140,6 +150,23 @@ export default function GalleryPage() {
             <div className="muted" style={{ fontSize: 13, marginTop: 10 }}>
               {zoom.status === "경고" ? "⚠️ 경고 문항 (최대 반복 도달)" : `다음 출제 ${zoom.due_date || "오늘"} · ${zoom.attempts + 1}/${zoom.target_count}회차`}
             </div>
+
+            {/* 학생이 올린 풀이 보기 */}
+            <button className="btn btn-secondary btn-block btn-sm" style={{ marginTop: 12 }} onClick={() => loadSols(zoom.id)}>
+              🖼️ 학생이 올린 풀이 보기
+            </button>
+            {sols[zoom.id] && (
+              <div className="row" style={{ gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                {sols[zoom.id].length === 0 && <span className="faint" style={{ fontSize: 13 }}>아직 올라온 풀이가 없어요.</span>}
+                {sols[zoom.id].map((l, i) => (
+                  <a key={l.id} href={l.solution_image_url} target="_blank" rel="noreferrer" style={{ position: "relative" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={l.solution_image_url} alt={`풀이 ${i + 1}`} style={{ width: 92, height: 92, objectFit: "cover", borderRadius: 10, border: "1px solid var(--line)" }} />
+                  </a>
+                ))}
+              </div>
+            )}
+
             <div className="row" style={{ gap: 8, marginTop: 14 }}>
               <button className="btn btn-primary" onClick={() => complete(zoom)}>✅ 완료(삭제)</button>
               {zoom.status !== "경고" && <button className="btn btn-secondary" onClick={() => retry(zoom)}>🔁 다시(재출제)</button>}

@@ -22,6 +22,41 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/";
   const router = useRouter();
   const [counts, setCounts] = useState<{ due: number; students: number }>({ due: 0, students: 0 });
+  const [studentName, setStudentName] = useState<string | null>(null);
+
+  const isStudent = pathname.startsWith("/student");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") setStudentName(localStorage.getItem("mm_student"));
+  }, [pathname]);
+
+  if (isStudent) {
+    return (
+      <div className="main">
+        <header className="topbar">
+          <div className="topbar-inner">
+            <span className="brand">
+              <span className="brand-mark"><BrandMark size={16} /></span>
+              <span>오답 반복학습</span>
+            </span>
+            <span className="topbar-spacer" />
+            {studentName && (
+              <>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{studentName}</span>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => { localStorage.removeItem("mm_student"); router.push("/student"); }}
+                >
+                  로그아웃
+                </button>
+              </>
+            )}
+          </div>
+        </header>
+        <div className="content" style={{ maxWidth: 560 }}>{children}</div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     (async () => {

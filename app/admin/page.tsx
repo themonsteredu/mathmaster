@@ -56,7 +56,9 @@ export default function TeacherDashboard() {
   async function retry(p: DBProblem) {
     const a = p.attempts + 1;
     const warned = a >= p.target_count;
-    const patch = warned ? { attempts: a, status: "경고", due_date: null as string | null } : { attempts: a, status: "대기", due_date: nextDue(a) };
+    const patch = warned
+      ? { attempts: a, status: "경고", due_date: null as string | null, last_submitted_at: null as string | null }
+      : { attempts: a, status: "대기", due_date: nextDue(a), last_submitted_at: null as string | null };
     setProblems((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...patch } : x)));
     await supabase.from("wrong_problems").update(patch).eq("id", p.id);
   }
@@ -142,7 +144,7 @@ export default function TeacherDashboard() {
                   <Avatar name={p.student_name} />
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{p.seq != null ? `${p.seq}번 · ` : ""}{p.student_name}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>{p.attempts + 1}/{p.target_count}회차</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{p.attempts + 1}/{p.target_count}회차{p.last_submitted_at ? " · 🆕 새 풀이" : ""}</div>
                     {p.answer && <div style={{ fontSize: 12, color: "var(--done-ink)", fontWeight: 700, marginTop: 2 }}>정답: {p.answer}</div>}
                   </div>
                 </div>

@@ -12,6 +12,7 @@ export type DBProblem = {
   status: string; // 대기 / 경고 (옛 데이터: 학습중 / 완료)
   attempts: number; // 지금까지 출제·재출제된 횟수
   due_date: string | null; // 다음 출제 예정일 (yyyy-mm-dd)
+  last_submitted_at: string | null; // 학생이 풀이를 마지막으로 올린 시각
   uploaded_by: string;
   created_at: string;
 };

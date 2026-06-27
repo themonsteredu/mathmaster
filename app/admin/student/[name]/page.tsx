@@ -43,8 +43,8 @@ export default function StudentDetail() {
     const a = p.attempts + 1;
     const warned = a >= p.target_count;
     const patch = warned
-      ? { attempts: a, status: "경고", due_date: null as string | null }
-      : { attempts: a, status: "대기", due_date: nextDue(a) };
+      ? { attempts: a, status: "경고", due_date: null as string | null, last_submitted_at: null as string | null }
+      : { attempts: a, status: "대기", due_date: nextDue(a), last_submitted_at: null as string | null };
     setProblems((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...patch } : x)));
     await supabase.from("wrong_problems").update(patch).eq("id", p.id);
   }
