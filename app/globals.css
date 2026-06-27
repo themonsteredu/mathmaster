@@ -131,11 +131,10 @@ a {
   color: var(--ink);
 }
 .brand-mark {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--bg);
   display: grid;
   place-items: center;
 }

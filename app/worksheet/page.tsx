@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { DBProblem, problemImage, todayISO } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
+import { AcademyLogo } from "@/components/Logo";
 
 function md(iso: string) {
   const d = new Date(iso);
@@ -149,7 +150,7 @@ export default function WorksheetPage() {
       {sheets.map((sheet, si) => (
         <div key={`s${si}`} className="ws-page">
           <div className="ws-head">
-            <span className="t">오답 복습 시험지</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AcademyLogo size={22} /><span className="t">오답 복습 시험지</span></span>
             <span style={{ fontSize: 13, color: "#222", fontWeight: 700 }}>이름 {sheet.student} &nbsp;/&nbsp; 날짜 ______</span>
           </div>
           <div className="ws-grid">

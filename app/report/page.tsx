@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { DBProblem } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
+import { AcademyLogo } from "@/components/Logo";
 
 type Completion = { student_name: string; unit: string | null; attempts: number; completed_at: string };
 
@@ -97,9 +98,12 @@ export default function ReportPage() {
       {/* 인쇄용 리포트 (A4 1장) */}
       <div className="ws-page">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", borderBottom: "3px solid var(--ink)", paddingBottom: 12, marginBottom: 18 }}>
-          <div>
-            <div style={{ fontSize: 12, letterSpacing: "0.15em", color: "#888", fontWeight: 700 }}>MATHMASTER</div>
-            <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, fontWeight: 700, marginTop: 4 }}>오답 학습 리포트</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <AcademyLogo size={44} />
+            <div>
+              <div style={{ fontSize: 12, letterSpacing: "0.15em", color: "#888", fontWeight: 700 }}>MATHMASTER</div>
+              <div style={{ fontFamily: "var(--font-serif)", fontSize: 26, fontWeight: 700, marginTop: 4 }}>오답 학습 리포트</div>
+            </div>
           </div>
           <div style={{ textAlign: "right", fontSize: 13, color: "#444" }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)" }}>{who} {grade && <span style={{ fontSize: 13, color: "#888", fontWeight: 500 }}>{grade}</span>}</div>

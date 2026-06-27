@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { todayISO } from "@/lib/data";
 import {
-  BrandMark,
   IconDashboard,
   IconRegister,
   IconBook,
@@ -15,6 +14,7 @@ import {
   IconLogout,
   type IconType,
 } from "@/components/icons";
+import { AcademyLogo } from "@/components/Logo";
 
 type NavItem = { href: string; label: string; icon: IconType; count?: number };
 
@@ -30,13 +30,27 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") setStudentName(localStorage.getItem("mm_student"));
   }, [pathname]);
 
+  useEffect(() => {
+    (async () => {
+      const today = todayISO();
+      const [{ data: probs }, { count: students }] = await Promise.all([
+        supabase.from("wrong_problems").select("status, due_date"),
+        supabase.from("students").select("id", { count: "exact", head: true }),
+      ]);
+      const due = (probs ?? []).filter(
+        (p) => p.status !== "완료" && p.status !== "경고" && (!p.due_date || p.due_date <= today),
+      ).length;
+      setCounts({ due, students: students ?? 0 });
+    })();
+  }, [pathname]);
+
   if (isStudent) {
     return (
       <div className="main">
         <header className="topbar">
           <div className="topbar-inner">
             <span className="brand">
-              <span className="brand-mark"><BrandMark size={16} /></span>
+              <span className="brand-mark"><AcademyLogo size={24} /></span>
               <span>오답 반복학습</span>
             </span>
             <span className="topbar-spacer" />
@@ -58,20 +72,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  useEffect(() => {
-    (async () => {
-      const today = todayISO();
-      const [{ data: probs }, { count: students }] = await Promise.all([
-        supabase.from("wrong_problems").select("status, due_date"),
-        supabase.from("students").select("id", { count: "exact", head: true }),
-      ]);
-      const due = (probs ?? []).filter(
-        (p) => p.status !== "완료" && p.status !== "경고" && (!p.due_date || p.due_date <= today),
-      ).length;
-      setCounts({ due, students: students ?? 0 });
-    })();
-  }, [pathname]);
-
   const nav: NavItem[] = [
     { href: "/admin", label: "대시보드", icon: IconDashboard },
     { href: "/gallery", label: "문항 보기", icon: IconBox },
@@ -87,7 +87,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <aside className="sidebar">
         <button className="brand" style={{ marginBottom: 22 }} onClick={() => router.push("/admin")}>
-          <span className="brand-mark"><BrandMark size={16} /></span>
+          <span className="brand-mark"><AcademyLogo size={24} /></span>
           <span>오답 반복학습</span>
         </button>
 
@@ -114,7 +114,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <div className="topbar-inner">
             <button className="brand" onClick={() => router.push("/admin")}>
-              <span className="brand-mark"><BrandMark size={16} /></span>
+              <span className="brand-mark"><AcademyLogo size={24} /></span>
               <span>오답 반복학습</span>
             </button>
             <span className="brand-sub">Mathmaster</span>
