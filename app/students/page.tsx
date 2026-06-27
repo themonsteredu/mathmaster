@@ -197,46 +197,34 @@ export default function StudentsPage() {
       ) : students.length === 0 ? (
         <div className="empty card flat"><h4>아직 등록된 학생이 없어요</h4>위 「학생 추가」로 명단을 만들어 보세요.</div>
       ) : (
-        <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-          <table className="table" style={{ minWidth: 720 }}>
-            <thead>
-              <tr>
-                <th>학생</th>
-                <th style={{ width: 70 }}>학년</th>
-                <th style={{ width: 220 }}>등원 요일</th>
-                <th style={{ width: 80 }}>오답</th>
-                <th style={{ width: 70 }}>경고</th>
-                <th style={{ width: 60 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((s) => {
-                const sm = statOf(s.name);
-                const days = parseDays(s.attend_days);
-                return (
-                  <tr key={s.id} className="row-link" onClick={() => router.push(`/admin/student/${encodeURIComponent(s.name)}`)}>
-                    <td><span className="name"><Avatar name={s.name} />{s.name}</span></td>
-                    <td className="muted">{s.grade || "—"}</td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <div className="row" style={{ gap: 3 }}>
-                        {DAY_ORDER.map((d) => (
-                          <button key={d} style={dayBtnStyle(days.includes(d))} onClick={() => toggleDay(s, d)}>{DAY_LABELS[d]}</button>
-                        ))}
-                      </div>
-                    </td>
-                    <td><span className="num">{sm.total}</span></td>
-                    <td>{sm.warn > 0 ? <span className="chip chip-danger"><span className="dot" />{sm.warn}</span> : <span className="faint">—</span>}</td>
-                    <td>
-                      <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger-ink)" }} onClick={(e) => { e.stopPropagation(); removeStudent(s); }}>삭제</button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={6}><div className="empty" style={{ padding: 28 }}><h4>해당하는 학생이 없습니다</h4></div></td></tr>
-              )}
-            </tbody>
-          </table>
+        <div className="stack" style={{ gap: 10 }}>
+          {filtered.map((s) => {
+            const sm = statOf(s.name);
+            const days = parseDays(s.attend_days);
+            return (
+              <div key={s.id} className="card" style={{ padding: 14 }}>
+                <div className="row" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div className="row" style={{ gap: 10, cursor: "pointer", minWidth: 0 }} onClick={() => router.push(`/admin/student/${encodeURIComponent(s.name)}`)}>
+                    <Avatar name={s.name} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 16 }}>{s.name}{s.grade && <span className="muted" style={{ fontWeight: 400, fontSize: 13, marginLeft: 6 }}>{s.grade}</span>}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>오답 {sm.total}개{sm.warn > 0 ? ` · 경고 ${sm.warn}` : ""}</div>
+                    </div>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger-ink)", flexShrink: 0 }} onClick={() => removeStudent(s)}>삭제</button>
+                </div>
+                <div className="row" style={{ gap: 5, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <span className="muted" style={{ fontSize: 12, fontWeight: 700, marginRight: 4 }}>등원 요일</span>
+                  {DAY_ORDER.map((d) => (
+                    <button key={d} style={dayBtnStyle(days.includes(d))} onClick={() => toggleDay(s, d)}>{DAY_LABELS[d]}</button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="empty card flat"><h4>해당하는 학생이 없습니다</h4></div>
+          )}
         </div>
       )}
     </>
