@@ -123,6 +123,7 @@ export default function GalleryPage() {
                       <span style={{ fontWeight: 800, fontSize: 13 }}>{p.seq != null ? `${p.seq}번` : "—"}</span>
                       {warn ? <span className="chip chip-danger" style={{ padding: "2px 7px" }}><span className="dot" />경고</span> : <span className="muted" style={{ fontSize: 12 }}>{p.attempts + 1}회차</span>}
                     </div>
+                    {p.unit && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📘 {p.unit}</div>}
                     {p.last_submitted_at && <div className="chip chip-accent" style={{ marginTop: 5, padding: "2px 8px" }}><span className="dot" />🆕 새 풀이</div>}
                     {p.answer && <div style={{ fontSize: 12, color: "var(--done-ink)", fontWeight: 700, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>정답: {p.answer}</div>}
                   </div>

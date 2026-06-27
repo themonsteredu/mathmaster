@@ -92,6 +92,7 @@ export default function StudentDetail() {
                       {isWarn ? <span className="badge badge-study" style={{ background: "var(--danger-soft)", color: "var(--danger-ink)" }}>⚠️ 경고</span> : <span className="badge badge-study">대기</span>}
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{p.seq != null ? `${p.seq}번 · ` : ""}등록 {md(p.created_at)}</div>
+                    {p.unit && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>📘 {p.unit}</div>}
                     {p.answer && <div style={{ fontSize: 13, color: "var(--done-ink)", fontWeight: 700, marginTop: 4 }}>정답: {p.answer}</div>}
                     <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                       {isWarn

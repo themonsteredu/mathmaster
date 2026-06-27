@@ -12,6 +12,8 @@ type Item = {
   file: File;
   previewUrl: string;
   answer: string;
+  unit: string;
+  detecting: boolean;
   cleanedDataUrl?: string;
   useCleaned: boolean;
   cleaning: boolean;
@@ -55,7 +57,7 @@ export default function UploadPage() {
 
   function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    const next = files.map((f) => ({ id: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), answer: "", useCleaned: true, cleaning: false }));
+    const next = files.map((f) => ({ id: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), answer: "", unit: "", detecting: false, useCleaned: true, cleaning: false }));
     setItems((prev) => [...prev, ...next]);
     e.target.value = "";
   }
@@ -84,6 +86,23 @@ export default function UploadPage() {
 
   async function cleanAll() {
     for (const it of items) if (!it.cleanedDataUrl) await cleanOne(it);
+  }
+
+  async function detectUnit(it: Item) {
+    patch(it.id, { detecting: true });
+    try {
+      const { data, mimeType } = await fileToBase64(it.file);
+      const res = await fetch("/api/detect-unit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data, mimeType }) });
+      const j = await res.json();
+      if (res.ok && j.unit) patch(it.id, { unit: j.unit });
+    } catch {
+      /* 무시 — 수동 입력 가능 */
+    } finally {
+      patch(it.id, { detecting: false });
+    }
+  }
+  async function detectAllUnits() {
+    for (const it of items) if (!it.unit) await detectUnit(it);
   }
 
   async function submitAll() {
@@ -129,6 +148,7 @@ export default function UploadPage() {
           cleaned_image_url: cleanedUrl,
           seq: nextAvailable(),
           answer: it.answer.trim() || null,
+          unit: it.unit.trim() || null,
           target_count: targetCount,
           uploaded_by: "선생님",
           attempts: 0,
@@ -185,9 +205,10 @@ export default function UploadPage() {
           <>
             <div className="row" style={{ justifyContent: "space-between", marginTop: 14, marginBottom: 8 }}>
               <span className="label" style={{ margin: 0 }}>추가된 사진 {items.length}장</span>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={cleanAll} disabled={!anyCleanable || items.some((i) => i.cleaning)}>
-                ✨ 전체 낙서 지우기
-              </button>
+              <div className="row" style={{ gap: 6 }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={detectAllUnits} disabled={items.some((i) => i.detecting)}>🔎 전체 단원 추천</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={cleanAll} disabled={!anyCleanable || items.some((i) => i.cleaning)}>✨ 전체 낙서 지우기</button>
+              </div>
             </div>
 
             {/* 수식 기호: 정답칸을 누른 뒤 탭하면 입력돼요 */}
@@ -221,6 +242,10 @@ export default function UploadPage() {
                     placeholder="정답 (채점용)"
                     style={{ marginTop: 6, padding: "7px 9px", fontSize: 12 }}
                   />
+                  <div className="row" style={{ gap: 4, marginTop: 4 }}>
+                    <input className="input" value={it.unit} onChange={(e) => patch(it.id, { unit: e.target.value })} placeholder="단원" style={{ padding: "7px 8px", fontSize: 12 }} />
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: "7px 9px", flexShrink: 0 }} onClick={() => detectUnit(it)} disabled={it.detecting}>{it.detecting ? "…" : "🔎"}</button>
+                  </div>
                   <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", color: "var(--danger-ink)", fontSize: 11 }} onClick={() => removeItem(it.id)}>삭제</button>
                 </div>
               ))}

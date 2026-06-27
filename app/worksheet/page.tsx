@@ -133,7 +133,7 @@ export default function WorksheetPage() {
                 <img src={problemImage(p)} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, background: "var(--bg-soft)" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{p.seq != null ? `${p.seq}번 · ` : ""}{p.student_name}</div>
-                  <div className="muted" style={{ fontSize: 12 }}>{p.due_date ? `출제일 ${p.due_date}` : "출제 대기"}{p.attempts ? ` · ${p.attempts + 1}회차` : ""}{p.answer ? " · 정답 있음" : ""}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{p.unit ? `📘 ${p.unit} · ` : ""}{p.due_date ? `출제일 ${p.due_date}` : "출제 대기"}{p.attempts ? ` · ${p.attempts + 1}회차` : ""}</div>
                 </div>
               </label>
             ))}
