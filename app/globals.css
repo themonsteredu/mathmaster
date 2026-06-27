@@ -104,6 +104,11 @@ a {
   padding: 28px 36px 96px;
 }
 
+/* 폰에서만 보이는 요소 (데스크탑 숨김) */
+.mobile-only {
+  display: none;
+}
+
 /* ---------------- 상단 바 ---------------- */
 .topbar {
   position: sticky;
@@ -700,6 +705,9 @@ a {
   }
   .mobile-nav {
     display: flex;
+  }
+  .mobile-only {
+    display: block;
   }
   .content {
     padding: 20px 16px 90px;

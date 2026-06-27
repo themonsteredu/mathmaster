@@ -111,6 +111,14 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="main">
+        <header className="topbar mobile-only">
+          <div className="topbar-inner">
+            <span className="brand">
+              <span className="brand-mark"><AcademyLogo size={22} /></span>
+              <span style={{ color: "var(--ink)" }}>오답Master</span>
+            </span>
+          </div>
+        </header>
         <div className="content">{children}</div>
       </div>
 
