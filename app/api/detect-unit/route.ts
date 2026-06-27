@@ -1,10 +1,20 @@
 // 문제 사진을 보고 '단원명'을 짧게 추천하는 서버 기능 (Gemini 텍스트+비전 모델)
 // 글자 몇 개만 출력하므로 낙서 지우기보다 훨씬 저렴합니다.
 
+import { supabase } from "@/lib/supabase";
+
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const MODEL = "gemini-2.5-flash";
+
+async function logUsage(kind: string) {
+  try {
+    await supabase.from("ai_usage").insert({ kind });
+  } catch {
+    /* 무시 */
+  }
+}
 
 const PROMPT = [
   "이것은 한국 중·고등학교 수학 문제 사진이야.",
@@ -37,6 +47,7 @@ export async function POST(req: Request) {
     const unit = text.split(/[\n.]/)[0].trim().slice(0, 30);
     if (!unit) return Response.json({ error: "단원을 알아내지 못했어요." }, { status: 502 });
 
+    await logUsage("unit");
     return Response.json({ unit });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : "알 수 없는 오류" }, { status: 500 });

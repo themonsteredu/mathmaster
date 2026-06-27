@@ -1,10 +1,20 @@
 // 문제 사진에서 학생 낙서를 지우는 서버 기능 (Google Gemini 이미지 모델 사용)
 // 비밀 키(GEMINI_API_KEY)는 서버에서만 읽으므로 브라우저/코드에 노출되지 않습니다.
 
+import { supabase } from "@/lib/supabase";
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const MODEL = "gemini-2.5-flash-image";
+
+async function logUsage(kind: string) {
+  try {
+    await supabase.from("ai_usage").insert({ kind });
+  } catch {
+    /* 사용 기록 실패는 무시 */
+  }
+}
 
 const PROMPT = [
   "You are a careful photo retoucher.",
@@ -65,6 +75,7 @@ export async function POST(req: Request) {
       );
     }
 
+    await logUsage("clean");
     return Response.json({ image: inline.data, mimeType: inline.mimeType || inline.mime_type || "image/png" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "알 수 없는 오류가 났어요.";

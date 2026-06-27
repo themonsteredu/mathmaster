@@ -94,6 +94,10 @@ export default function TeacherDashboard() {
         <StatCard label="경고" value={warnTotal} unit="문항" deltaType="down" delta={warnTotal > 0 ? "확인 필요" : ""} />
       </div>
 
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: -8, marginBottom: 14 }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => router.push("/usage")}>📊 API 사용량 보기</button>
+      </div>
+
       {/* 달력 */}
       <div className="card" style={{ padding: 18 }}>
         <div className="cal-bar">

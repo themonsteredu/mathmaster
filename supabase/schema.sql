@@ -103,3 +103,16 @@ alter table wrong_problems add column if not exists answer text;
 -- 아래 한 줄을 SQL Editor에 붙여넣고 RUN 하세요.
 -- ============================================================
 alter table wrong_problems add column if not exists last_submitted_at timestamptz;
+
+-- ============================================================
+-- [추가] AI 사용 기록 (낙서 지우기 / 단원 인식 호출 횟수)
+-- 아래 전체를 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+create table if not exists ai_usage (
+  id         uuid primary key default gen_random_uuid(),
+  kind       text not null,            -- clean(낙서지우기) / unit(단원인식)
+  created_at timestamptz not null default now()
+);
+alter table ai_usage enable row level security;
+drop policy if exists "allow all - ai_usage" on ai_usage;
+create policy "allow all - ai_usage" on ai_usage for all using (true) with check (true);

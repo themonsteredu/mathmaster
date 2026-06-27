@@ -11,7 +11,7 @@ import {
   IconBook,
   IconBox,
   IconStudent,
-  IconSettings,
+  IconStats,
   IconLogout,
   type IconType,
 } from "@/components/icons";
@@ -104,7 +104,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
         <div style={{ marginTop: "auto" }}>
           <div className="side-section">계정</div>
-          <button className="nav-item" disabled style={{ opacity: 0.6, cursor: "default" }}><IconSettings size={18} /><span>설정</span></button>
+          <button className={`nav-item ${pathname.startsWith("/usage") ? "active" : ""}`} onClick={() => router.push("/usage")}><IconStats size={18} /><span>API 사용량</span></button>
           <button className="nav-item" disabled style={{ opacity: 0.6, cursor: "default" }}><IconLogout size={18} /><span>로그아웃</span></button>
         </div>
       </aside>
