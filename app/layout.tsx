@@ -3,8 +3,8 @@ import "./globals.css";
 import Shell from "@/components/Shell";
 
 export const metadata: Metadata = {
-  title: "오답 반복학습",
-  description: "틀린 문제를 정한 횟수만큼 반복해서 푸는 수학학원 학습 앱",
+  title: "오답master",
+  description: "틀린 문제를 반복해서 풀고 관리하는 수학학원 오답 학습 앱",
 };
 
 export default function RootLayout({
