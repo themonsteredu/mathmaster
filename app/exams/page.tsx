@@ -18,6 +18,7 @@ type ExamPaper = {
   exam_type: string | null;
   year: number | null;
   file_type: string | null;
+  original_url: string | null;
   created_at: string;
 };
 
@@ -91,6 +92,7 @@ export default function ExamsPage() {
   const [pageUseClean, setPageUseClean] = useState<boolean[]>([]);
   // 저장된 시험지 수정 모드 (있으면 새로 만들지 않고 그 항목을 덮어씀)
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editOriginalUrl, setEditOriginalUrl] = useState<string | null>(null);
   // 저장 전 최종 미리보기 (실제 저장될 페이지들)
   const [confirmImages, setConfirmImages] = useState<string[] | null>(null);
 
@@ -212,6 +214,7 @@ export default function ExamsPage() {
     setYear(THIS_YEAR);
     setAdding(false);
     setEditingId(null);
+    setEditOriginalUrl(null);
     setConfirmImages(null);
   }
 
@@ -219,8 +222,10 @@ export default function ExamsPage() {
   async function startEdit(p: ExamPaper) {
     setError("");
     const pdf = isPdf(p);
+    const origUrl = p.original_url || p.image_url; // 낙서 원본 (없으면 현재 파일)
     setViewing(null);
     setEditingId(p.id);
+    setEditOriginalUrl(origUrl);
     setAdding(true);
     setTitle(p.title);
     setSchool(p.school ?? "");
@@ -238,7 +243,8 @@ export default function ExamsPage() {
     setFile(null);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     try {
-      const f = await urlToFile(p.image_url, pdf);
+      // 다시 지우기는 낙서 '원본'에서 시작 (이미 지운 결과를 또 지우지 않도록)
+      const f = await urlToFile(origUrl, pdf);
       setFile(f);
       if (pdf) pdfPageCount(f).then(setPdfPages).catch(() => setPdfPages(0));
     } catch {
@@ -332,6 +338,22 @@ export default function ExamsPage() {
         imageUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
       }
 
+      // 낙서 원본도 함께 보관
+      let originalUrl: string | null;
+      if (editingId) {
+        originalUrl = editOriginalUrl; // 수정: 원본은 이미 저장돼 있음
+      } else if (newPdf || newImg) {
+        // 지운 버전과 원본이 다르면 → 원본(file)을 따로 올림
+        setProgress("원본도 보관 중…");
+        const oext = file!.name.split(".").pop() || (fileIsPdf ? "pdf" : "jpg");
+        const opath = `exams/orig-${crypto.randomUUID()}.${oext}`;
+        const { error: oErr } = await supabase.storage.from(PHOTO_BUCKET).upload(opath, file!, { contentType: file!.type || (fileIsPdf ? "application/pdf" : "image/jpeg") });
+        if (!oErr) originalUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(opath).data.publicUrl;
+        else originalUrl = imageUrl;
+      } else {
+        originalUrl = imageUrl; // 안 지웠으면 최종본이 곧 원본
+      }
+
       setProgress("저장 중…");
       const full = {
         title: finalTitle,
@@ -343,19 +365,21 @@ export default function ExamsPage() {
         exam_type: examType || null,
         year,
         file_type: fileIsPdf ? "pdf" : "image",
+        original_url: originalUrl,
       };
       const base = { title: finalTitle, category: full.category, image_url: imageUrl };
+      const colRe = /school|grade|term|exam_type|year|file_type|original_url|column/;
 
       if (editingId) {
         let { error: upd } = await supabase.from("exam_papers").update(full).eq("id", editingId);
-        if (upd && /school|grade|term|exam_type|year|file_type|column/.test(upd.message || "")) {
+        if (upd && colRe.test(upd.message || "")) {
           ({ error: upd } = await supabase.from("exam_papers").update(base).eq("id", editingId));
         }
         if (upd) throw new Error(upd.message);
       } else {
         let { error: insErr } = await supabase.from("exam_papers").insert(full);
         // 새 칸이 아직 없으면 기본 칸만으로 재시도 (마이그레이션 전에도 동작)
-        if (insErr && /school|grade|term|exam_type|year|file_type|column/.test(insErr.message || "")) {
+        if (insErr && colRe.test(insErr.message || "")) {
           ({ error: insErr } = await supabase.from("exam_papers").insert(base));
           if (!insErr) {
             setError("저장됐어요. 다만 '학교·학기·시험' 구분 칸이 아직 없어 그 정보는 빠졌어요. Supabase에 안내된 SQL을 한 번 실행하면 다음부턴 모두 저장돼요.");
@@ -442,14 +466,16 @@ export default function ExamsPage() {
   school text, grade int, term int,
   exam_type text, year int,
   file_type text default 'image',
+  original_url text,
   created_at timestamptz not null default now()
 );
-alter table exam_papers add column if not exists school    text;
-alter table exam_papers add column if not exists grade     int;
-alter table exam_papers add column if not exists term      int;
-alter table exam_papers add column if not exists exam_type text;
-alter table exam_papers add column if not exists year      int;
-alter table exam_papers add column if not exists file_type text default 'image';
+alter table exam_papers add column if not exists school       text;
+alter table exam_papers add column if not exists grade        int;
+alter table exam_papers add column if not exists term         int;
+alter table exam_papers add column if not exists exam_type    text;
+alter table exam_papers add column if not exists year         int;
+alter table exam_papers add column if not exists file_type    text default 'image';
+alter table exam_papers add column if not exists original_url text;
 alter table exam_papers enable row level security;
 drop policy if exists "allow all - exam_papers" on exam_papers;
 create policy "allow all - exam_papers" on exam_papers for all using (true) with check (true);`}</pre>
@@ -690,6 +716,9 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                   <a className="btn btn-primary btn-sm" href={viewing.image_url} target="_blank" rel="noreferrer">📄 PDF 열기 / 인쇄</a>
                 ) : (
                   <button className="btn btn-primary btn-sm" onClick={() => window.print()}>🖨️ 인쇄 / PDF</button>
+                )}
+                {viewing.original_url && viewing.original_url !== viewing.image_url && (
+                  <a className="btn btn-secondary btn-sm" href={viewing.original_url} target="_blank" rel="noreferrer">🖉 낙서 원본</a>
                 )}
                 <button className="btn btn-secondary btn-sm" onClick={() => startEdit(viewing)}>✏️ 수정</button>
                 <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger-ink)" }} onClick={() => remove(viewing)}>삭제</button>
