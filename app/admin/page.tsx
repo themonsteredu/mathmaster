@@ -143,6 +143,7 @@ export default function TeacherDashboard() {
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{p.seq != null ? `${p.seq}번 · ` : ""}{p.student_name}</div>
                     <div className="muted" style={{ fontSize: 12 }}>{p.attempts + 1}/{p.target_count}회차</div>
+                    {p.answer && <div style={{ fontSize: 12, color: "var(--done-ink)", fontWeight: 700, marginTop: 2 }}>정답: {p.answer}</div>}
                   </div>
                 </div>
               </div>

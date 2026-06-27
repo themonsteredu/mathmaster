@@ -11,6 +11,7 @@ type Item = {
   id: string;
   file: File;
   previewUrl: string;
+  answer: string;
   cleanedDataUrl?: string;
   useCleaned: boolean;
   cleaning: boolean;
@@ -46,7 +47,7 @@ export default function UploadPage() {
 
   function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    const next = files.map((f) => ({ id: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), useCleaned: true, cleaning: false }));
+    const next = files.map((f) => ({ id: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), answer: "", useCleaned: true, cleaning: false }));
     setItems((prev) => [...prev, ...next]);
     e.target.value = "";
   }
@@ -84,16 +85,15 @@ export default function UploadPage() {
 
     setBusy(true);
     try {
-      // 이 학생의 다음 고정 번호 구하기 (기존 최댓값 + 1)
-      let nextSeq = 1;
-      const { data: mx, error: mxErr } = await supabase
+      // 이 학생이 쓰고 있는 번호들 → 빈 번호부터 채우기
+      const { data: seqRows, error: seqErr } = await supabase
         .from("wrong_problems")
         .select("seq")
         .eq("student_name", studentName.trim())
-        .not("seq", "is", null)
-        .order("seq", { ascending: false })
-        .limit(1);
-      if (!mxErr) nextSeq = ((mx?.[0]?.seq as number) ?? 0) + 1;
+        .not("seq", "is", null);
+      const used = new Set<number>();
+      if (!seqErr) (seqRows ?? []).forEach((r) => { if (r.seq != null) used.add(r.seq as number); });
+      const nextAvailable = () => { let k = 1; while (used.has(k)) k++; used.add(k); return k; };
 
       const rows: Record<string, unknown>[] = [];
       let n = 0;
@@ -119,7 +119,8 @@ export default function UploadPage() {
           student_name: studentName.trim(),
           problem_image_url: problemUrl,
           cleaned_image_url: cleanedUrl,
-          seq: nextSeq + (n - 1),
+          seq: nextAvailable(),
+          answer: it.answer.trim() || null,
           target_count: targetCount,
           uploaded_by: "선생님",
           attempts: 0,
@@ -196,6 +197,13 @@ export default function UploadPage() {
                     <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", marginTop: 6, fontSize: 11 }} onClick={() => cleanOne(it)}>✨ 낙서 지우기</button>
                   )}
                   {it.cleanError && <div style={{ fontSize: 10, color: "var(--danger-ink)", marginTop: 4 }}>{it.cleanError}</div>}
+                  <input
+                    className="input"
+                    value={it.answer}
+                    onChange={(e) => patch(it.id, { answer: e.target.value })}
+                    placeholder="정답 (채점용)"
+                    style={{ marginTop: 6, padding: "7px 9px", fontSize: 12 }}
+                  />
                   <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", color: "var(--danger-ink)", fontSize: 11 }} onClick={() => removeItem(it.id)}>삭제</button>
                 </div>
               ))}

@@ -5,7 +5,8 @@ export type DBProblem = {
   cleaned_image_url: string | null;
   subject: string | null;
   unit: string | null;
-  seq: number | null; // 학생별 고정 문항 번호 (삭제돼도 유지)
+  seq: number | null; // 학생별 고정 문항 번호 (삭제돼도 유지, 빈 번호 재사용)
+  answer: string | null; // 정답 (채점용, 시험지엔 안 나옴)
   target_count: number; // 최대 반복(출제) 횟수
   done_count: number;
   status: string; // 대기 / 경고 (옛 데이터: 학습중 / 완료)

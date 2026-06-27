@@ -91,3 +91,9 @@ update wrong_problems w
 set seq = r.rn
 from ranked r
 where w.id = r.id and w.seq is null;
+
+-- ============================================================
+-- [추가] 정답(채점용) 칸
+-- 아래 한 줄을 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+alter table wrong_problems add column if not exists answer text;
