@@ -137,3 +137,18 @@ create policy "allow all - completions" on completions for all using (true) with
 -- 아래 한 줄을 SQL Editor에 붙여넣고 RUN 하세요.
 -- ============================================================
 alter table students add column if not exists attend_days text;
+
+-- ============================================================
+-- [추가] 기출 시험지 보관함
+-- 아래 전체를 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+create table if not exists exam_papers (
+  id         uuid primary key default gen_random_uuid(),
+  title      text not null,
+  category   text,
+  image_url  text not null,
+  created_at timestamptz not null default now()
+);
+alter table exam_papers enable row level security;
+drop policy if exists "allow all - exam_papers" on exam_papers;
+create policy "allow all - exam_papers" on exam_papers for all using (true) with check (true);

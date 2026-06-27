@@ -122,6 +122,16 @@ a {
   display: none;
 }
 
+/* 인쇄할 때만 보이는 요소 (화면에선 숨김) */
+.print-only {
+  display: none;
+}
+@media print {
+  .print-only {
+    display: block;
+  }
+}
+
 /* ---------------- 상단 바 ---------------- */
 .topbar {
   position: sticky;

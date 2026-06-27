@@ -9,6 +9,7 @@ import {
   IconRegister,
   IconBook,
   IconBox,
+  IconArchive,
   IconStudent,
   IconStats,
   IconLogout,
@@ -77,6 +78,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     { href: "/gallery", label: "문항 보기", icon: IconBox },
     { href: "/upload", label: "오답 등록", icon: IconRegister },
     { href: "/worksheet", label: "시험지 만들기", icon: IconBook, count: counts.due },
+    { href: "/exams", label: "기출 시험지", icon: IconArchive },
     { href: "/report", label: "리포트", icon: IconStats },
     { href: "/students", label: "학생 관리", icon: IconStudent, count: counts.students },
   ];

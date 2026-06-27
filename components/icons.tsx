@@ -146,6 +146,14 @@ export const IconBook = (p: P) => (
   </Icon>
 );
 
+export const IconArchive = (p: P) => (
+  <Icon {...p}>
+    <rect x="3.5" y="4.5" width="17" height="4" rx="1" />
+    <path d="M5 8.5V19a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8.5" />
+    <path d="M10 12h4" />
+  </Icon>
+);
+
 export const BrandMark = ({ size = 16 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M4 19V6l6 7 6-7v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
