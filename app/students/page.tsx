@@ -3,9 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { DBProblem, DBStudent } from "@/lib/data";
+import { DBProblem, DBStudent, DAY_LABELS, DAY_ORDER, parseDays, serializeDays } from "@/lib/data";
 import { PageHeader, Avatar } from "@/components/ui";
-import { IconPlus, IconSearch, IconChevronRight } from "@/components/icons";
+import { IconPlus, IconSearch } from "@/components/icons";
+
+function dayBtnStyle(on: boolean): React.CSSProperties {
+  return {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+    border: `1px solid ${on ? "var(--ink)" : "var(--line)"}`,
+    background: on ? "var(--ink)" : "#fff",
+    color: on ? "#fff" : "var(--faint)",
+  };
+}
 
 export default function StudentsPage() {
   const router = useRouter();
@@ -17,6 +31,7 @@ export default function StudentsPage() {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
+  const [newDays, setNewDays] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
 
   const [q, setQ] = useState("");
@@ -40,13 +55,22 @@ export default function StudentsPage() {
     setError("");
     if (!name.trim()) return;
     setBusy(true);
-    const { error } = await supabase.from("students").insert({ name: name.trim(), grade: grade.trim() || null });
+    const { error } = await supabase.from("students").insert({ name: name.trim(), grade: grade.trim() || null, attend_days: serializeDays(newDays) || null });
     setBusy(false);
     if (error) return setError(error.message);
     setName("");
     setGrade("");
+    setNewDays([]);
     setAdding(false);
     load();
+  }
+
+  async function toggleDay(s: DBStudent, day: number) {
+    const cur = parseDays(s.attend_days);
+    const next = cur.includes(day) ? cur.filter((d) => d !== day) : [...cur, day];
+    const attend_days = serializeDays(next) || null;
+    setStudents((prev) => prev.map((x) => (x.id === s.id ? { ...x, attend_days } : x)));
+    await supabase.from("students").update({ attend_days }).eq("id", s.id);
   }
 
   async function removeStudent(s: DBStudent) {
@@ -144,6 +168,14 @@ export default function StudentsPage() {
             <input className="input" style={{ flex: 1 }} value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="학년 (예: 중3)" onKeyDown={(e) => e.key === "Enter" && addStudent()} />
             <button className="btn btn-primary" onClick={addStudent} disabled={busy}>{busy ? "추가 중…" : "추가"}</button>
           </div>
+          <div className="row" style={{ gap: 5, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <span className="muted" style={{ fontSize: 12, fontWeight: 700, marginRight: 4 }}>등원 요일:</span>
+            {DAY_ORDER.map((d) => (
+              <button key={d} type="button" style={dayBtnStyle(newDays.includes(d))} onClick={() => setNewDays((p) => (p.includes(d) ? p.filter((x) => x !== d) : [...p, d]))}>
+                {DAY_LABELS[d]}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -165,27 +197,34 @@ export default function StudentsPage() {
       ) : students.length === 0 ? (
         <div className="empty card flat"><h4>아직 등록된 학생이 없어요</h4>위 「학생 추가」로 명단을 만들어 보세요.</div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <table className="table">
+        <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+          <table className="table" style={{ minWidth: 720 }}>
             <thead>
               <tr>
                 <th>학생</th>
-                <th style={{ width: 80 }}>학년</th>
-                <th style={{ width: 90 }}>등록 오답</th>
-                <th style={{ width: 80 }}>진행 중</th>
-                <th style={{ width: 80 }}>경고</th>
-                <th style={{ width: 70 }}></th>
+                <th style={{ width: 70 }}>학년</th>
+                <th style={{ width: 220 }}>등원 요일</th>
+                <th style={{ width: 80 }}>오답</th>
+                <th style={{ width: 70 }}>경고</th>
+                <th style={{ width: 60 }}></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((s) => {
                 const sm = statOf(s.name);
+                const days = parseDays(s.attend_days);
                 return (
                   <tr key={s.id} className="row-link" onClick={() => router.push(`/admin/student/${encodeURIComponent(s.name)}`)}>
                     <td><span className="name"><Avatar name={s.name} />{s.name}</span></td>
                     <td className="muted">{s.grade || "—"}</td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <div className="row" style={{ gap: 3 }}>
+                        {DAY_ORDER.map((d) => (
+                          <button key={d} style={dayBtnStyle(days.includes(d))} onClick={() => toggleDay(s, d)}>{DAY_LABELS[d]}</button>
+                        ))}
+                      </div>
+                    </td>
                     <td><span className="num">{sm.total}</span></td>
-                    <td><span className="num">{sm.active}</span></td>
                     <td>{sm.warn > 0 ? <span className="chip chip-danger"><span className="dot" />{sm.warn}</span> : <span className="faint">—</span>}</td>
                     <td>
                       <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger-ink)" }} onClick={(e) => { e.stopPropagation(); removeStudent(s); }}>삭제</button>

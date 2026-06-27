@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { DBProblem, problemImage, todayISO } from "@/lib/data";
+import { DBProblem, DBStudent, problemImage, todayISO, parseDays, DAY_LABELS } from "@/lib/data";
 import { PageHeader } from "@/components/ui";
 import { AcademyLogo } from "@/components/Logo";
 
@@ -15,32 +15,47 @@ type Sheet = { student: string; rows: DBProblem[] };
 
 export default function WorksheetPage() {
   const [problems, setProblems] = useState<DBProblem[]>([]);
+  const [students, setStudents] = useState<DBStudent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [until, setUntil] = useState(todayISO());
   const [who, setWho] = useState("전체");
+  const [attendOnly, setAttendOnly] = useState(true);
   const [perPage, setPerPage] = useState<4 | 6>(4);
   const [withAnswers, setWithAnswers] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    supabase.from("wrong_problems").select("*").order("created_at", { ascending: false }).then(({ data }) => {
-      setProblems((data as DBProblem[]) ?? []);
+    (async () => {
+      const [{ data: probs }, { data: studs }] = await Promise.all([
+        supabase.from("wrong_problems").select("*").order("created_at", { ascending: false }),
+        supabase.from("students").select("*"),
+      ]);
+      setProblems((probs as DBProblem[]) ?? []);
+      setStudents((studs as DBStudent[]) ?? []);
       setLoading(false);
-    });
+    })();
   }, []);
 
   const names = ["전체", ...Array.from(new Set(problems.map((p) => p.student_name)))];
+  const weekday = new Date(until + "T00:00:00").getDay();
+  const attendMap = new Map(students.map((s) => [s.name, parseDays(s.attend_days)]));
 
   const due = useMemo(() => {
     return problems.filter((p) => {
       if (p.status === "경고" || p.status === "완료") return false;
       if (who !== "전체" && p.student_name !== who) return false;
+      // 기준일 요일에 등원하는 학생만 (등원 요일 미설정이면 항상 포함)
+      if (attendOnly) {
+        const ad = attendMap.get(p.student_name);
+        if (ad && ad.length > 0 && !ad.includes(weekday)) return false;
+      }
       if (!p.due_date) return true;
       return p.due_date <= until;
     });
-  }, [problems, until, who]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [problems, until, who, attendOnly, students]);
 
   useEffect(() => {
     if (!touched) setSelected(new Set(due.map((p) => p.id)));
@@ -93,7 +108,7 @@ export default function WorksheetPage() {
         <div className="card" style={{ padding: 18, marginBottom: 16 }}>
           <div className="row" style={{ gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
             <div>
-              <label className="label">기준일 (이 날짜까지 출제할 오답)</label>
+              <label className="label">기준일 (이 날짜까지 출제할 오답) · {DAY_LABELS[weekday]}요일</label>
               <input className="input" type="date" value={until} onChange={(e) => { setUntil(e.target.value); setTouched(false); }} />
             </div>
             <div>
@@ -112,8 +127,12 @@ export default function WorksheetPage() {
               ))}
             </div>
           )}
+          <label className="row" style={{ gap: 8, marginTop: 14, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+            <input type="checkbox" checked={attendOnly} onChange={(e) => { setAttendOnly(e.target.checked); setTouched(false); }} />
+            기준일({DAY_LABELS[weekday]}요일) 등원 학생만 보기
+          </label>
           {hasAnswers && (
-            <label className="row" style={{ gap: 8, marginTop: 14, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+            <label className="row" style={{ gap: 8, marginTop: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
               <input type="checkbox" checked={withAnswers} onChange={(e) => setWithAnswers(e.target.checked)} />
               맨 뒤에 정답지도 함께 인쇄
             </label>

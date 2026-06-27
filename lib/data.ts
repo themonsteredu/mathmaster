@@ -46,8 +46,21 @@ export type DBStudent = {
   id: string;
   name: string;
   grade: string | null;
+  attend_days: string | null; // "1,3,5" = 월·수·금 (0=일 … 6=토)
   created_at: string;
 };
+
+// 요일: 화면 표시는 월~일 순서
+export const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+export const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // 월화수목금토일
+
+export function parseDays(s: string | null): number[] {
+  if (!s) return [];
+  return s.split(",").map((x) => Number(x)).filter((n) => !isNaN(n));
+}
+export function serializeDays(arr: number[]): string {
+  return [...new Set(arr)].sort((a, b) => a - b).join(",");
+}
 
 /** 표시용 상태 키: 완료 / 신규(아직 한 번도 안 풂) / 학습중 */
 export function statusKey(p: DBProblem): "done" | "new" | "study" {

@@ -131,3 +131,9 @@ create table if not exists completions (
 alter table completions enable row level security;
 drop policy if exists "allow all - completions" on completions;
 create policy "allow all - completions" on completions for all using (true) with check (true);
+
+-- ============================================================
+-- [추가] 학생 등원 요일 (예: "1,3,5" = 월·수·금)
+-- 아래 한 줄을 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+alter table students add column if not exists attend_days text;
