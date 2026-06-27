@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase, PHOTO_BUCKET } from "@/lib/supabase";
 import { nextDue } from "@/lib/data";
@@ -41,6 +41,7 @@ export default function UploadPage() {
   const [typingName, setTypingName] = useState(false);
   const [targetCount, setTargetCount] = useState(5);
   const [focusedAnswerId, setFocusedAnswerId] = useState<string | null>(null);
+  const [cropId, setCropId] = useState<string | null>(null);
 
   function insertSymbol(sym: string) {
     if (!focusedAnswerId) return;
@@ -88,39 +89,7 @@ export default function UploadPage() {
     for (const it of items) if (!it.cleanedDataUrl) await cleanOne(it);
   }
 
-  // 무료 정리: 브라우저에서 흑백·대비 처리 (AI 호출 없음 = 0원)
-  async function freshenImage(it: Item) {
-    const img = new window.Image();
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res();
-      img.onerror = () => rej(new Error("이미지 로드 실패"));
-      img.src = it.previewUrl;
-    });
-    const maxW = 1400;
-    const scale = Math.min(1, maxW / img.width);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(img.width * scale);
-    canvas.height = Math.round(img.height * scale);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const d = id.data;
-    const wp = 180, bp = 95; // 밝은 연필자국은 흰색으로, 인쇄 글씨는 남김
-    for (let i = 0; i < d.length; i += 4) {
-      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      let v: number;
-      if (lum >= wp) v = 255;
-      else if (lum <= bp) v = Math.max(0, Math.round(lum * 0.6));
-      else v = Math.round(((lum - bp) / (wp - bp)) * 255);
-      d[i] = d[i + 1] = d[i + 2] = v;
-    }
-    ctx.putImageData(id, 0, 0);
-    patch(it.id, { cleanedDataUrl: canvas.toDataURL("image/png"), useCleaned: true });
-  }
-  async function freshenAll() {
-    for (const it of items) if (!it.cleanedDataUrl) await freshenImage(it);
-  }
+  // 무료 정리는 '잘라내기(크롭)'로 처리 — 아래 CropModal에서 영역을 잘라 cleanedDataUrl로 저장
 
   async function detectUnit(it: Item) {
     patch(it.id, { detecting: true });
@@ -241,7 +210,6 @@ export default function UploadPage() {
               <span className="label" style={{ margin: 0 }}>추가된 사진 {items.length}장</span>
               <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={detectAllUnits} disabled={items.some((i) => i.detecting)}>🔎 전체 단원 추천</button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={freshenAll} disabled={!anyCleanable}>✨ 전체 또렷하게(무료)</button>
               </div>
             </div>
 
@@ -265,11 +233,14 @@ export default function UploadPage() {
                         <input type="checkbox" checked={it.useCleaned} onChange={(e) => patch(it.id, { useCleaned: e.target.checked })} />
                         정리본 사용
                       </label>
-                      <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", fontSize: 11 }} onClick={() => cleanOne(it)}>🤖 AI로 더 지우기</button>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => setCropId(it.id)}>✂️ 다시 자르기</button>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => cleanOne(it)}>🤖 AI로 더 지우기</button>
+                      </div>
                     </>
                   ) : (
                     <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
-                      <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => freshenImage(it)}>✨ 또렷하게(무료)</button>
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => setCropId(it.id)}>✂️ 잘라내기(무료)</button>
                       <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => cleanOne(it)}>🤖 AI 지우기</button>
                     </div>
                   )}
@@ -333,6 +304,82 @@ export default function UploadPage() {
 
         {message && <div className={`alert ${message.type === "ok" ? "alert-ok" : "alert-err"}`} style={{ marginTop: 16, marginBottom: 0 }}>{message.type === "ok" ? "✅ " : "❌ "}{message.text}</div>}
       </div>
+
+      {cropId && (() => {
+        const it = items.find((i) => i.id === cropId);
+        if (!it) return null;
+        return (
+          <CropModal
+            src={it.previewUrl}
+            onCancel={() => setCropId(null)}
+            onDone={(d) => { patch(cropId, { cleanedDataUrl: d, useCleaned: true }); setCropId(null); }}
+          />
+        );
+      })()}
     </>
+  );
+}
+
+type Rect = { x: number; y: number; w: number; h: number };
+
+function CropModal({ src, onCancel, onDone }: { src: string; onCancel: () => void; onDone: (dataUrl: string) => void }) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [rect, setRect] = useState<Rect | null>(null);
+  const [start, setStart] = useState<{ x: number; y: number } | null>(null);
+
+  function pos(e: React.PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(e.clientX - r.left, r.width)),
+      y: Math.max(0, Math.min(e.clientY - r.top, r.height)),
+    };
+  }
+  function down(e: React.PointerEvent) {
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const p = pos(e);
+    setStart(p);
+    setRect({ x: p.x, y: p.y, w: 0, h: 0 });
+  }
+  function move(e: React.PointerEvent) {
+    if (!start) return;
+    const p = pos(e);
+    setRect({ x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) });
+  }
+  function up() {
+    setStart(null);
+  }
+  function confirm() {
+    const img = imgRef.current;
+    if (!img) return;
+    const sx = img.naturalWidth / img.clientWidth;
+    const sy = img.naturalHeight / img.clientHeight;
+    let r = rect;
+    if (!r || r.w < 8 || r.h < 8) r = { x: 0, y: 0, w: img.clientWidth, h: img.clientHeight };
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(r.w * sx));
+    canvas.height = Math.max(1, Math.round(r.h * sy));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, r.x * sx, r.y * sy, r.w * sx, r.h * sy, 0, 0, canvas.width, canvas.height);
+    onDone(canvas.toDataURL("image/png"));
+  }
+
+  return (
+    <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(15,23,42,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div className="card" style={{ padding: 16, maxWidth: 560, width: "100%", maxHeight: "92vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>잘라낼 영역을 드래그하세요</div>
+        <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>문제 부분만 손가락/마우스로 드래그해 사각형으로 선택하면, 낙서가 있는 바깥은 잘려나가요. (무료)</p>
+        <div style={{ position: "relative", touchAction: "none", userSelect: "none" }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img ref={imgRef} src={src} alt="" draggable={false} style={{ width: "100%", display: "block", borderRadius: 8 }} />
+          {rect && <div style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.w, height: rect.h, border: "2px solid var(--accent)", background: "rgba(63,110,165,0.18)", pointerEvents: "none" }} />}
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+          <button className="btn btn-secondary" onClick={onCancel}>취소</button>
+          <button className="btn btn-primary" onClick={confirm}>✂️ 이 영역으로 자르기</button>
+        </div>
+      </div>
+    </div>
   );
 }
