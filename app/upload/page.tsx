@@ -386,7 +386,7 @@ function MultiCropModal({ src, onAdd, onClose }: { src: string; onAdd: (dataUrl:
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(15,23,42,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div className="card" style={{ padding: 16, maxWidth: 620, width: "100%", maxHeight: "92vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ fontWeight: 800, marginBottom: 6 }}>한 페이지에서 여러 문항 자르기</div>
-        <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>문제 하나를 드래그로 감싼 뒤 <b>「이 영역 문항 추가」</b>를 누르세요. 여러 번 반복해서 한 페이지를 여러 문항으로 나눌 수 있어요.</p>
+        <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>문제 하나를 드래그로 감싼 뒤 <b>「이 영역 문항 추가」</b>를 누르세요. 여러 번 반복해서 나눈 뒤 <b>「완료」</b> → 아래에서 <b>학생을 고르고 「등록」 한 번</b>이면 전부 한꺼번에 저장돼요.</p>
         <div style={{ position: "relative", touchAction: "none", userSelect: "none" }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img ref={imgRef} src={src} alt="" draggable={false} style={{ width: "100%", display: "block", borderRadius: 8 }} />

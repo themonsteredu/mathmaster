@@ -50,12 +50,20 @@ export default function StudentsPage() {
   }
 
   async function removeStudent(s: DBStudent) {
-    if (!confirm(`"${s.name}" 학생을 삭제할까요?\n이 학생의 오답 문항도 모두 함께 삭제됩니다. (되돌릴 수 없어요)`)) return;
-    // 이 학생의 오답 문항 먼저 삭제 (풀이 사진은 연결되어 자동 삭제)
-    await supabase.from("wrong_problems").delete().eq("student_name", s.name);
-    const { error } = await supabase.from("students").delete().eq("id", s.id);
-    if (error) return setError(error.message);
-    load();
+    if (!confirm(`"${s.name}" 학생을 삭제할까요?\n이 학생의 오답 문항·완료 기록도 모두 함께 삭제됩니다. (되돌릴 수 없어요)`)) return;
+    setError("");
+    // 화면에서 즉시 제거 (체감 빠르게)
+    setStudents((prev) => prev.filter((x) => x.id !== s.id));
+    setProblems((prev) => prev.filter((p) => p.student_name !== s.name));
+    try {
+      await supabase.from("wrong_problems").delete().eq("student_name", s.name);
+      await supabase.from("completions").delete().eq("student_name", s.name);
+      const { error } = await supabase.from("students").delete().eq("id", s.id);
+      if (error) throw new Error(error.message);
+    } catch (e) {
+      setError(`삭제 중 문제가 생겼어요: ${e instanceof Error ? e.message : "알 수 없는 오류"}`);
+      load(); // 실패 시 원상복구
+    }
   }
 
   const grades = ["전체", ...Array.from(new Set(students.map((s) => s.grade).filter(Boolean) as string[]))];
