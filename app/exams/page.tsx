@@ -11,6 +11,12 @@ type ExamPaper = {
   title: string;
   category: string | null;
   image_url: string;
+  school: string | null;
+  grade: number | null;
+  term: number | null;
+  exam_type: string | null;
+  year: number | null;
+  file_type: string | null;
   created_at: string;
 };
 
@@ -29,6 +35,27 @@ function ymd(iso: string) {
   const d = new Date(iso);
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 }
+function isPdf(p: { file_type?: string | null; image_url: string }) {
+  return p.file_type === "pdf" || /\.pdf($|\?)/i.test(p.image_url);
+}
+function gradeTermLabel(p: { grade: number | null; term: number | null }) {
+  if (p.grade && p.term) return `${p.grade}-${p.term}`;
+  if (p.grade) return `${p.grade}학년`;
+  return "";
+}
+// 제목/분류를 자동으로 조립 (사용자가 따로 안 적어도 찾기 쉽게)
+function autoTitle(f: { year: number | null; school: string; grade: number | null; term: number | null; exam_type: string }) {
+  const parts: string[] = [];
+  if (f.year) parts.push(`${f.year}`);
+  if (f.school.trim()) parts.push(f.school.trim());
+  if (f.grade && f.term) parts.push(`${f.grade}-${f.term}`);
+  else if (f.grade) parts.push(`${f.grade}학년`);
+  if (f.exam_type) parts.push(f.exam_type);
+  return parts.join(" ");
+}
+
+const THIS_YEAR = 2026;
+const YEARS = [THIS_YEAR, THIS_YEAR - 1, THIS_YEAR - 2, THIS_YEAR - 3, THIS_YEAR - 4];
 
 export default function ExamsPage() {
   const [papers, setPapers] = useState<ExamPaper[]>([]);
@@ -38,18 +65,27 @@ export default function ExamsPage() {
 
   // 검색 / 필터
   const [q, setQ] = useState("");
-  const [catFilter, setCatFilter] = useState("전체");
+  const [fYear, setFYear] = useState<number | "전체">("전체");
+  const [fGT, setFGT] = useState("전체"); // 학년-학기 (예: 2-1)
+  const [fType, setFType] = useState("전체"); // 중간/기말
 
   // 업로드 폼
   const [adding, setAdding] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [fileIsPdf, setFileIsPdf] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [cleanedDataUrl, setCleanedDataUrl] = useState<string | null>(null);
   const [useCleaned, setUseCleaned] = useState(true);
   const [cleaning, setCleaning] = useState(false);
+
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
+  const [school, setSchool] = useState("");
+  const [grade, setGrade] = useState<number | null>(null);
+  const [term, setTerm] = useState<number | null>(null);
+  const [examType, setExamType] = useState("");
+  const [year, setYear] = useState<number>(THIS_YEAR);
+
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
 
@@ -62,7 +98,6 @@ export default function ExamsPage() {
       .select("*")
       .order("created_at", { ascending: false });
     if (e) {
-      // 표가 아직 없으면 안내
       if (/exam_papers|relation|does not exist|column/.test(e.message || "")) setNeedSql(true);
       else setError(e.message);
     }
@@ -76,16 +111,18 @@ export default function ExamsPage() {
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
+    const pdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
     setFile(f);
+    setFileIsPdf(pdf);
     setPreviewUrl(URL.createObjectURL(f));
     setCleanedDataUrl(null);
-    setUseCleaned(true);
+    setUseCleaned(!pdf);
     if (!title.trim()) setTitle(f.name.replace(/\.[^.]+$/, ""));
     e.target.value = "";
   }
 
   async function cleanImage() {
-    if (!file) return;
+    if (!file || fileIsPdf) return;
     setCleaning(true);
     setError("");
     try {
@@ -104,40 +141,65 @@ export default function ExamsPage() {
 
   function resetForm() {
     setFile(null);
+    setFileIsPdf(false);
     setPreviewUrl(null);
     setCleanedDataUrl(null);
     setUseCleaned(true);
     setTitle("");
-    setCategory("");
+    setSchool("");
+    setGrade(null);
+    setTerm(null);
+    setExamType("");
+    setYear(THIS_YEAR);
     setAdding(false);
   }
 
   async function save() {
     setError("");
-    if (!file) return setError("시험지 사진을 먼저 골라 주세요.");
-    if (!title.trim()) return setError("제목을 입력해 주세요. (나중에 찾을 때 써요)");
+    if (!file) return setError("시험지 사진 또는 PDF를 먼저 골라 주세요.");
+    const finalTitle = title.trim() || autoTitle({ year, school, grade, term, exam_type: examType });
+    if (!finalTitle) return setError("제목을 입력하거나 학교·학년·시험을 골라 주세요. (나중에 찾을 때 써요)");
     setBusy(true);
     try {
-      setProgress("사진 올리는 중…");
+      setProgress(fileIsPdf ? "PDF 올리는 중…" : "사진 올리는 중…");
       let blob: Blob = file;
-      let ext = file.name.split(".").pop() || "jpg";
-      if (useCleaned && cleanedDataUrl) {
+      let ext = file.name.split(".").pop() || (fileIsPdf ? "pdf" : "jpg");
+      let contentType = file.type || (fileIsPdf ? "application/pdf" : "image/jpeg");
+      if (!fileIsPdf && useCleaned && cleanedDataUrl) {
         blob = await dataUrlToBlob(cleanedDataUrl);
         ext = "png";
+        contentType = "image/png";
       }
       const path = `exams/${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: blob.type || "image/png" });
-      if (upErr) throw new Error("사진 업로드 실패: " + upErr.message);
+      const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType });
+      if (upErr) throw new Error("업로드 실패: " + upErr.message);
       const imageUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
 
       setProgress("저장 중…");
-      const { error: insErr } = await supabase.from("exam_papers").insert({
-        title: title.trim(),
-        category: category.trim() || null,
+      const full = {
+        title: finalTitle,
+        category: school.trim() || examType || null,
         image_url: imageUrl,
-      });
+        school: school.trim() || null,
+        grade,
+        term,
+        exam_type: examType || null,
+        year,
+        file_type: fileIsPdf ? "pdf" : "image",
+      };
+      let { error: insErr } = await supabase.from("exam_papers").insert(full);
+      // 새 칸이 아직 없으면 기본 칸만으로 재시도 (마이그레이션 전에도 동작)
+      if (insErr && /school|grade|term|exam_type|year|file_type|column/.test(insErr.message || "")) {
+        ({ error: insErr } = await supabase.from("exam_papers").insert({ title: finalTitle, category: full.category, image_url: imageUrl }));
+        if (!insErr) {
+          setError("저장됐어요. 다만 '학교·학기·시험' 구분 칸이 아직 없어 그 정보는 빠졌어요. Supabase에 안내된 SQL을 한 번 실행하면 다음부턴 모두 저장돼요.");
+          resetForm();
+          load();
+          return;
+        }
+      }
       if (insErr) {
-        if (/exam_papers|relation|does not exist|column/.test(insErr.message || "")) {
+        if (/exam_papers|relation|does not exist/.test(insErr.message || "")) {
           setNeedSql(true);
           throw new Error("아직 '기출 시험지' 보관함 표가 Supabase에 없어요. 아래 안내 SQL을 한 번 실행해 주세요.");
         }
@@ -165,14 +227,26 @@ export default function ExamsPage() {
     }
   }
 
-  const categories = ["전체", ...Array.from(new Set(papers.map((p) => p.category).filter(Boolean) as string[]))];
-  const filtered = papers.filter(
-    (p) =>
-      (catFilter === "전체" || p.category === catFilter) &&
-      (q === "" || p.title.toLowerCase().includes(q.toLowerCase()) || (p.category ?? "").toLowerCase().includes(q.toLowerCase())),
-  );
+  // 필터 선택지 (모아둔 데이터 기준)
+  const years = Array.from(new Set(papers.map((p) => p.year).filter(Boolean) as number[])).sort((a, b) => b - a);
+  const gradeTerms = Array.from(new Set(papers.map((p) => gradeTermLabel(p)).filter(Boolean))).sort();
+  const examTypes = Array.from(new Set(papers.map((p) => p.exam_type).filter(Boolean) as string[]));
+
+  const filtered = papers.filter((p) => {
+    if (fYear !== "전체" && p.year !== fYear) return false;
+    if (fGT !== "전체" && gradeTermLabel(p) !== fGT) return false;
+    if (fType !== "전체" && p.exam_type !== fType) return false;
+    if (q) {
+      const hay = `${p.title} ${p.school ?? ""} ${p.category ?? ""} ${p.exam_type ?? ""} ${gradeTermLabel(p)} ${p.year ?? ""}`.toLowerCase();
+      if (!hay.includes(q.toLowerCase())) return false;
+    }
+    return true;
+  });
 
   const shownImg = useCleaned && cleanedDataUrl ? cleanedDataUrl : previewUrl;
+  const previewTitle = title.trim() || autoTitle({ year, school, grade, term, exam_type: examType });
+
+  const chip = (active: boolean): string => `btn btn-sm ${active ? "btn-primary" : "btn-secondary"}`;
 
   return (
     <>
@@ -180,7 +254,7 @@ export default function ExamsPage() {
         <PageHeader
           eyebrow="기출 보관함"
           title="기출 시험지"
-          sub="기출·시험지 사진을 올려 낙서를 지우고, 깨끗한 시험지로 모아두세요. 제목·분류로 나중에 쉽게 찾아 다시 풀릴 수 있어요."
+          sub="기출·시험지를 사진이나 PDF로 올려두세요. 학교·학년/학기·중간/기말·연도로 구분해 모아두면 나중에 쉽게 찾아 다시 풀릴 수 있어요."
           actions={
             <button className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
               <IconCamera size={14} />시험지 올리기
@@ -198,8 +272,17 @@ export default function ExamsPage() {
   title text not null,
   category text,
   image_url text not null,
+  school text, grade int, term int,
+  exam_type text, year int,
+  file_type text default 'image',
   created_at timestamptz not null default now()
 );
+alter table exam_papers add column if not exists school    text;
+alter table exam_papers add column if not exists grade     int;
+alter table exam_papers add column if not exists term      int;
+alter table exam_papers add column if not exists exam_type text;
+alter table exam_papers add column if not exists year      int;
+alter table exam_papers add column if not exists file_type text default 'image';
 alter table exam_papers enable row level security;
 drop policy if exists "allow all - exam_papers" on exam_papers;
 create policy "allow all - exam_papers" on exam_papers for all using (true) with check (true);`}</pre>
@@ -207,40 +290,82 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
         )}
 
         {adding && (
-          <div className="card" style={{ padding: 20, marginBottom: 16, maxWidth: 620 }}>
+          <div className="card" style={{ padding: 20, marginBottom: 16, maxWidth: 640 }}>
             {!previewUrl ? (
               <label className="upload-area" style={{ width: "100%" }}>
                 <span style={{ color: "var(--muted)", marginBottom: 8 }}><IconCamera size={34} /></span>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>기출/시험지 사진 고르기</span>
-                <span className="muted" style={{ fontSize: 13, marginTop: 4 }}>사진 한 장을 올려요</span>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={onPickFile} style={{ display: "none" }} />
+                <span style={{ fontWeight: 700, fontSize: 15 }}>기출/시험지 사진 또는 PDF 고르기</span>
+                <span className="muted" style={{ fontSize: 13, marginTop: 4 }}>사진(JPG/PNG)이나 PDF 한 개를 올려요</span>
+                <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.pdf" onChange={onPickFile} style={{ display: "none" }} />
               </label>
             ) : (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={shownImg ?? undefined} alt="미리보기" style={{ width: "100%", maxHeight: 360, objectFit: "contain", borderRadius: 10, background: "var(--bg-soft)" }} />
+                {fileIsPdf ? (
+                  <div style={{ width: "100%", height: 200, borderRadius: 10, background: "var(--bg-soft)", border: "1px solid var(--line)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    <span style={{ fontSize: 44 }}>📄</span>
+                    <span style={{ fontWeight: 700 }}>PDF 파일</span>
+                    <span className="muted" style={{ fontSize: 12 }}>{file?.name}</span>
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={shownImg ?? undefined} alt="미리보기" style={{ width: "100%", maxHeight: 360, objectFit: "contain", borderRadius: 10, background: "var(--bg-soft)" }} />
+                )}
                 <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>🖼 다른 사진</button>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={cleanImage} disabled={cleaning}>{cleaning ? "AI 지우는 중…" : "🤖 AI 낙서 지우기"}</button>
-                  {cleanedDataUrl && (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>🖼 다른 파일</button>
+                  {!fileIsPdf && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={cleanImage} disabled={cleaning}>{cleaning ? "AI 지우는 중…" : "🤖 AI 낙서 지우기"}</button>
+                  )}
+                  {!fileIsPdf && cleanedDataUrl && (
                     <label className="row" style={{ gap: 6, fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
                       <input type="checkbox" checked={useCleaned} onChange={(e) => setUseCleaned(e.target.checked)} />
                       낙서 지운 버전 사용
                     </label>
                   )}
-                  <input ref={fileInputRef} type="file" accept="image/*" onChange={onPickFile} style={{ display: "none" }} />
+                  {fileIsPdf && <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>PDF는 낙서 지우기를 지원하지 않아요 (그대로 보관)</span>}
+                  <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.pdf" onChange={onPickFile} style={{ display: "none" }} />
                 </div>
 
+                {/* 구분 정보 */}
                 <div className="field" style={{ marginTop: 16 }}>
-                  <label className="label">제목</label>
-                  <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 2024 중3 1학기 기말 수학" />
+                  <label className="label">연도</label>
+                  <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                    {YEARS.map((y) => (
+                      <button key={y} type="button" className={chip(year === y)} onClick={() => setYear(y)}>{y}</button>
+                    ))}
+                  </div>
                 </div>
                 <div className="field">
-                  <label className="label">분류 (선택 — 학년·학교·단원 등 나중에 찾기 쉽게)</label>
-                  <input className="input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="예: 중3 / 함수 / ○○중학교" list="exam-cats" />
-                  <datalist id="exam-cats">
-                    {categories.filter((c) => c !== "전체").map((c) => <option key={c} value={c} />)}
+                  <label className="label">학년 · 학기</label>
+                  <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {[1, 2, 3].map((g) => (
+                      <button key={g} type="button" className={chip(grade === g)} onClick={() => setGrade(grade === g ? null : g)}>{g}학년</button>
+                    ))}
+                    <span style={{ width: 8 }} />
+                    {[1, 2].map((t) => (
+                      <button key={t} type="button" className={chip(term === t)} onClick={() => setTerm(term === t ? null : t)}>{t}학기</button>
+                    ))}
+                    {grade && term && <span className="muted" style={{ fontSize: 13, fontWeight: 700, marginLeft: 4 }}>→ {grade}-{term}</span>}
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="label">시험</label>
+                  <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                    {["중간", "기말"].map((t) => (
+                      <button key={t} type="button" className={chip(examType === t)} onClick={() => setExamType(examType === t ? "" : t)}>{t}고사</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="label">학교 (선택)</label>
+                  <input className="input" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="예: ○○중학교" list="exam-schools" />
+                  <datalist id="exam-schools">
+                    {Array.from(new Set(papers.map((p) => p.school).filter(Boolean) as string[])).map((s) => <option key={s} value={s} />)}
                   </datalist>
+                </div>
+                <div className="field">
+                  <label className="label">제목 (비워두면 자동으로 만들어요)</label>
+                  <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={previewTitle || "예: 2026 ○○중 2-1 중간"} />
+                  {!title.trim() && previewTitle && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>자동 제목: <b>{previewTitle}</b></p>}
                 </div>
 
                 <div className="row" style={{ gap: 8, marginTop: 8 }}>
@@ -252,18 +377,32 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
           </div>
         )}
 
-        {/* 검색 / 분류 필터 */}
+        {/* 검색 / 구분 필터 */}
         {papers.length > 0 && (
-          <div className="row" style={{ gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+          <div className="stack" style={{ gap: 10, marginBottom: 14 }}>
             <div className="row" style={{ flex: 1, minWidth: 200, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "0 12px", gap: 6 }}>
               <IconSearch size={16} className="muted" />
-              <input className="input" style={{ border: 0, padding: "10px 4px", fontSize: 15 }} placeholder="제목·분류로 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input className="input" style={{ border: 0, padding: "10px 4px", fontSize: 15 }} placeholder="제목·학교·학년·시험으로 검색" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
-            {categories.length > 1 && (
-              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                {categories.map((c) => (
-                  <button key={c} className={`btn btn-sm ${catFilter === c ? "btn-primary" : "btn-secondary"}`} onClick={() => setCatFilter(c)}>{c}</button>
-                ))}
+            {years.length > 0 && (
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="muted" style={{ fontSize: 12, fontWeight: 700, width: 44 }}>연도</span>
+                <button className={chip(fYear === "전체")} onClick={() => setFYear("전체")}>전체</button>
+                {years.map((y) => <button key={y} className={chip(fYear === y)} onClick={() => setFYear(y)}>{y}</button>)}
+              </div>
+            )}
+            {gradeTerms.length > 0 && (
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="muted" style={{ fontSize: 12, fontWeight: 700, width: 44 }}>학년·학기</span>
+                <button className={chip(fGT === "전체")} onClick={() => setFGT("전체")}>전체</button>
+                {gradeTerms.map((g) => <button key={g} className={chip(fGT === g)} onClick={() => setFGT(g)}>{g}</button>)}
+              </div>
+            )}
+            {examTypes.length > 0 && (
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="muted" style={{ fontSize: 12, fontWeight: 700, width: 44 }}>시험</span>
+                <button className={chip(fType === "전체")} onClick={() => setFType("전체")}>전체</button>
+                {examTypes.map((t) => <button key={t} className={chip(fType === t)} onClick={() => setFType(t)}>{t}</button>)}
               </div>
             )}
           </div>
@@ -272,17 +411,33 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
         {loading ? (
           <div className="alert alert-info">불러오는 중…</div>
         ) : papers.length === 0 ? (
-          <div className="empty card flat"><h4>아직 모아둔 기출 시험지가 없어요</h4>위 「시험지 올리기」로 기출·시험지 사진을 올려 보세요.</div>
+          <div className="empty card flat"><h4>아직 모아둔 기출 시험지가 없어요</h4>위 「시험지 올리기」로 기출·시험지를 사진이나 PDF로 올려 보세요.</div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
-            {filtered.map((p) => (
-              <div key={p.id} className="card" style={{ padding: 10, cursor: "pointer" }} onClick={() => setViewing(p)}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.image_url} alt={p.title} style={{ width: "100%", height: 150, objectFit: "cover", borderRadius: 8, background: "var(--bg-soft)" }} />
-                <div style={{ fontWeight: 700, fontSize: 14, marginTop: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{p.category ? `${p.category} · ` : ""}{ymd(p.created_at)}</div>
-              </div>
-            ))}
+            {filtered.map((p) => {
+              const pdf = isPdf(p);
+              const gt = gradeTermLabel(p);
+              return (
+                <div key={p.id} className="card" style={{ padding: 10, cursor: "pointer" }} onClick={() => setViewing(p)}>
+                  {pdf ? (
+                    <div style={{ width: "100%", height: 150, borderRadius: 8, background: "var(--bg-soft)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                      <span style={{ fontSize: 38 }}>📄</span>
+                      <span className="muted" style={{ fontSize: 11, fontWeight: 700 }}>PDF</span>
+                    </div>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image_url} alt={p.title} style={{ width: "100%", height: 150, objectFit: "cover", borderRadius: 8, background: "var(--bg-soft)" }} />
+                  )}
+                  <div className="row" style={{ gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+                    {p.year && <span className="chip" style={{ fontSize: 10 }}>{p.year}</span>}
+                    {gt && <span className="chip" style={{ fontSize: 10 }}>{gt}</span>}
+                    {p.exam_type && <span className="chip" style={{ fontSize: 10 }}>{p.exam_type}</span>}
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{p.school ? `${p.school} · ` : ""}{ymd(p.created_at)}</div>
+                </div>
+              );
+            })}
             {filtered.length === 0 && <div className="empty card flat" style={{ gridColumn: "1 / -1" }}><h4>검색 결과가 없어요</h4></div>}
           </div>
         )}
@@ -291,26 +446,36 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
       {/* 크게 보기 + 인쇄 */}
       {viewing && (
         <div className="no-print" onClick={() => setViewing(null)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(15,23,42,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div className="card" style={{ padding: 16, maxWidth: 720, width: "100%", maxHeight: "94vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+          <div className="card" style={{ padding: 16, maxWidth: 760, width: "100%", maxHeight: "94vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
             <div className="row" style={{ justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 800, fontSize: 16 }}>{viewing.title}</div>
-                <div className="muted" style={{ fontSize: 12 }}>{viewing.category ? `${viewing.category} · ` : ""}{ymd(viewing.created_at)}</div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {[viewing.year, gradeTermLabel(viewing), viewing.exam_type, viewing.school].filter(Boolean).join(" · ") || ymd(viewing.created_at)}
+                </div>
               </div>
-              <div className="row" style={{ gap: 6 }}>
-                <button className="btn btn-primary btn-sm" onClick={() => window.print()}>🖨️ 인쇄 / PDF</button>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                {isPdf(viewing) ? (
+                  <a className="btn btn-primary btn-sm" href={viewing.image_url} target="_blank" rel="noreferrer">📄 PDF 열기 / 인쇄</a>
+                ) : (
+                  <button className="btn btn-primary btn-sm" onClick={() => window.print()}>🖨️ 인쇄 / PDF</button>
+                )}
                 <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger-ink)" }} onClick={() => remove(viewing)}>삭제</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setViewing(null)}>닫기</button>
               </div>
             </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={viewing.image_url} alt={viewing.title} style={{ width: "100%", borderRadius: 8, background: "var(--bg-soft)" }} />
+            {isPdf(viewing) ? (
+              <iframe src={viewing.image_url} title={viewing.title} style={{ width: "100%", height: "70vh", border: "1px solid var(--line)", borderRadius: 8, background: "#fff" }} />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={viewing.image_url} alt={viewing.title} style={{ width: "100%", borderRadius: 8, background: "var(--bg-soft)" }} />
+            )}
           </div>
         </div>
       )}
 
-      {/* 인쇄 전용 — 골라본 시험지를 A4로 깔끔하게 출력 */}
-      {viewing && (
+      {/* 인쇄 전용 — 이미지 시험지를 A4로 깔끔하게 출력 (PDF는 새 탭에서 인쇄) */}
+      {viewing && !isPdf(viewing) && (
         <div className="print-only">
           <div className="ws-head">
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><AcademyLogo size={22} /><span className="t">{viewing.title}</span></span>

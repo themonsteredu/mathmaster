@@ -147,8 +147,21 @@ create table if not exists exam_papers (
   title      text not null,
   category   text,
   image_url  text not null,
+  school     text,            -- 학교 (예: ○○중학교)
+  grade      int,             -- 학년 (1,2,3)
+  term       int,             -- 학기 (1,2)
+  exam_type  text,            -- 중간 / 기말
+  year       int,             -- 연도 (예: 2026)
+  file_type  text default 'image',  -- image | pdf
   created_at timestamptz not null default now()
 );
+-- 이미 옛 버전 표를 만든 경우를 위해 칸을 보강 (있으면 무시됨)
+alter table exam_papers add column if not exists school    text;
+alter table exam_papers add column if not exists grade     int;
+alter table exam_papers add column if not exists term      int;
+alter table exam_papers add column if not exists exam_type text;
+alter table exam_papers add column if not exists year      int;
+alter table exam_papers add column if not exists file_type text default 'image';
 alter table exam_papers enable row level security;
 drop policy if exists "allow all - exam_papers" on exam_papers;
 create policy "allow all - exam_papers" on exam_papers for all using (true) with check (true);
