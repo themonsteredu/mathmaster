@@ -51,7 +51,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <div className="topbar-inner">
             <span className="brand">
               <span className="brand-mark"><AcademyLogo size={24} /></span>
-              <span>오답<span style={{ color: "#f4692b" }}>master</span></span>
+              <span style={{ color: "var(--ink)" }}>오답Master</span>
             </span>
             <span className="topbar-spacer" />
             {studentName && (
@@ -88,7 +88,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <button className="brand" style={{ marginBottom: 22 }} onClick={() => router.push("/admin")}>
           <span className="brand-mark"><AcademyLogo size={24} /></span>
-          <span>오답<span style={{ color: "#f4692b" }}>master</span></span>
+          <span style={{ color: "var(--ink)" }}>오답Master</span>
         </button>
 
         <div className="side-section">관리</div>
@@ -115,9 +115,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <div className="topbar-inner">
             <button className="brand" onClick={() => router.push("/admin")}>
               <span className="brand-mark"><AcademyLogo size={24} /></span>
-              <span>오답<span style={{ color: "#f4692b" }}>master</span></span>
+              <span style={{ color: "var(--ink)" }}>오답Master</span>
             </button>
-            <span className="brand-sub">Mathmaster</span>
             <span className="topbar-spacer" />
           </div>
         </header>
