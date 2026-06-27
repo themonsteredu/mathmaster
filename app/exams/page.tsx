@@ -246,6 +246,48 @@ export default function ExamsPage() {
     }
   }
 
+  // 직접 지우개(무료) — 사용자가 손으로 칠해서 지움
+  const [erase, setErase] = useState<{ src: string; page: number | null } | null>(null);
+  function openEraseImage() {
+    if (!previewUrl) return;
+    setErase({ src: cleanedDataUrl || previewUrl, page: null });
+  }
+  function openErasePage(i: number) {
+    setErase({ src: pageUseClean[i] ? pdfCleaned[i] : pdfOriginals[i], page: i });
+  }
+  function eraseDone(dataUrl: string) {
+    if (!erase) return;
+    if (erase.page == null) {
+      setCleanedDataUrl(dataUrl);
+      setUseCleaned(true);
+    } else {
+      const pg = erase.page;
+      setPdfCleaned((prev) => prev.map((c, k) => (k === pg ? dataUrl : c)));
+      setPageUseClean((prev) => prev.map((v, k) => (k === pg ? true : v)));
+    }
+    setErase(null);
+  }
+
+  // PDF를 직접 지우개로만 정리하려고 페이지 이미지로 변환 (AI 없이, 무료)
+  async function prepPdfManual() {
+    if (!file || !fileIsPdf) return;
+    setCleaning(true);
+    setError("");
+    try {
+      setProgress("PDF를 페이지로 변환 중…");
+      const imgs = await pdfToImages(file);
+      setPdfOriginals(imgs);
+      setPdfCleaned(imgs.slice());
+      setPageUseClean(imgs.map(() => true));
+      setUseCleaned(true);
+    } catch (e) {
+      setError(`PDF 변환 실패: ${e instanceof Error ? e.message : "오류"}`);
+    } finally {
+      setCleaning(false);
+      setProgress("");
+    }
+  }
+
   // 실제로 저장될 최종 페이지 이미지들 (확인용)
   function finalImages(): string[] {
     if (fileIsPdf && useCleaned && pdfCleaned.length) return pdfCleaned.map((c, i) => (pageUseClean[i] ? c : pdfOriginals[i]));
@@ -455,8 +497,14 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                   {!fileIsPdf && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={cleanImage} disabled={cleaning}>{cleaning ? "AI 지우는 중…" : cleanedDataUrl ? "🤖 다시 지우기" : "🤖 AI 낙서 지우기"}</button>
                   )}
+                  {!fileIsPdf && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={openEraseImage} disabled={cleaning}>✏️ 직접 지우기(무료)</button>
+                  )}
                   {fileIsPdf && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={cleanPdf} disabled={cleaning}>{cleaning ? progress || "처리 중…" : pdfCleaned.length ? "🤖 다시 지우기" : "🤖 PDF 낙서 지우기"}</button>
+                  )}
+                  {fileIsPdf && pdfCleaned.length === 0 && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={prepPdfManual} disabled={cleaning}>✏️ 직접 지우기(무료)</button>
                   )}
                   {((!fileIsPdf && cleanedDataUrl) || (fileIsPdf && pdfCleaned.length > 0)) && (
                     <label className="row" style={{ gap: 6, fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
@@ -496,6 +544,9 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                             <div className="row" style={{ gap: 8, alignItems: "stretch" }}>
                               {opt("원본", pdfOriginals[i], !useClean, () => setPageUseClean((prev) => prev.map((v, k) => (k === i ? false : v))))}
                               {opt("지운 후", c, useClean, () => setPageUseClean((prev) => prev.map((v, k) => (k === i ? true : v))))}
+                            </div>
+                            <div className="row" style={{ justifyContent: "center", marginTop: 6 }}>
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openErasePage(i)}>✏️ 이 페이지 직접 지우기(무료)</button>
                             </div>
                           </div>
                         );
@@ -655,6 +706,9 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
         </div>
       )}
 
+      {/* 직접 지우개 (무료, 브라우저에서 처리) */}
+      {erase && <ManualEraseModal src={erase.src} onCancel={() => setErase(null)} onDone={eraseDone} />}
+
       {/* 저장 전 최종 확인 — 실제로 저장될 모습 그대로 */}
       {confirmImages && (
         <div className="no-print" onClick={() => setConfirmImages(null)} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(15,23,42,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -692,5 +746,127 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
         </div>
       )}
     </>
+  );
+}
+
+// 직접 지우개 — 사진/페이지 위에 흰색으로 칠해서 낙서를 가림 (브라우저 처리, 요금 0원)
+function ManualEraseModal({ src, onCancel, onDone }: { src: string; onCancel: () => void; onDone: (dataUrl: string) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [ready, setReady] = useState(false);
+  const [brush, setBrush] = useState(24);
+  const drawing = useRef(false);
+  const last = useRef<{ x: number; y: number } | null>(null);
+  const undoStack = useRef<ImageData[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let dataUrl = src;
+      if (!src.startsWith("data:")) {
+        const blob = await (await fetch(src)).blob();
+        dataUrl = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result as string);
+          r.onerror = rej;
+          r.readAsDataURL(blob);
+        });
+      }
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled) return;
+        const c = canvasRef.current;
+        if (!c) return;
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const ctx = c.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        setReady(true);
+      };
+      img.src = dataUrl;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
+  function pos(e: React.PointerEvent) {
+    const c = canvasRef.current!;
+    const r = c.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height) };
+  }
+  function stroke(a: { x: number; y: number }, b: { x: number; y: number }) {
+    const c = canvasRef.current!;
+    const ctx = c.getContext("2d")!;
+    const scale = c.width / c.clientWidth;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = brush * scale;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  function down(e: React.PointerEvent) {
+    const c = canvasRef.current!;
+    const ctx = c.getContext("2d")!;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    undoStack.current.push(ctx.getImageData(0, 0, c.width, c.height));
+    if (undoStack.current.length > 12) undoStack.current.shift();
+    setCanUndo(true);
+    drawing.current = true;
+    const p = pos(e);
+    last.current = p;
+    stroke(p, p);
+  }
+  function move(e: React.PointerEvent) {
+    if (!drawing.current) return;
+    const p = pos(e);
+    stroke(last.current!, p);
+    last.current = p;
+  }
+  function up() {
+    drawing.current = false;
+    last.current = null;
+  }
+  function undo() {
+    const c = canvasRef.current!;
+    const ctx = c.getContext("2d")!;
+    const s = undoStack.current.pop();
+    if (s) ctx.putImageData(s, 0, 0);
+    setCanUndo(undoStack.current.length > 0);
+  }
+
+  return (
+    <div className="no-print" style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(15,23,42,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div className="card" style={{ padding: 16, maxWidth: 720, width: "100%", maxHeight: "94vh", overflow: "auto" }}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 800, fontSize: 15 }}>✏️ 직접 지우기 (무료)</span>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={undo} disabled={!canUndo}>↩ 되돌리기</button>
+            <button className="btn btn-secondary btn-sm" onClick={onCancel}>취소</button>
+            <button className="btn btn-primary btn-sm" onClick={() => onDone(canvasRef.current!.toDataURL("image/png"))} disabled={!ready}>✅ 적용</button>
+          </div>
+        </div>
+        <div className="row" style={{ gap: 10, alignItems: "center", marginBottom: 10 }}>
+          <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>지우개 굵기</span>
+          <input type="range" min={8} max={70} value={brush} onChange={(e) => setBrush(Number(e.target.value))} style={{ flex: 1 }} />
+          <span style={{ display: "inline-block", width: brush, height: brush, maxWidth: 40, maxHeight: 40, borderRadius: "50%", background: "#fff", border: "1px solid var(--line)", flexShrink: 0 }} />
+        </div>
+        <p className="muted" style={{ fontSize: 12, margin: "0 0 10px" }}>낙서 위를 손가락/마우스로 문지르면 흰색으로 덮여 지워져요. 실수하면 「되돌리기」. 다 되면 「적용」.</p>
+        <div style={{ position: "relative", touchAction: "none", userSelect: "none", lineHeight: 0 }}>
+          <canvas
+            ref={canvasRef}
+            onPointerDown={down}
+            onPointerMove={move}
+            onPointerUp={up}
+            style={{ width: "100%", height: "auto", borderRadius: 8, border: "1px solid var(--line)", cursor: "crosshair", background: "#fff" }}
+          />
+          {!ready && <div className="muted" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>불러오는 중…</div>}
+        </div>
+      </div>
+    </div>
   );
 }
