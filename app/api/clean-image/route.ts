@@ -17,13 +17,18 @@ async function logUsage(kind: string) {
 }
 
 const PROMPT = [
-  "You are a careful photo retoucher.",
-  "This is a photo of a PRINTED math problem with a student's handwriting on it.",
-  "Remove ONLY the student's additions: pencil/pen handwriting, scribbles, circles,",
-  "underlines, check marks and any drawn marks.",
-  "Do NOT change, add, move, or rewrite any of the original printed text, numbers,",
-  "fractions, or math symbols. Keep the exact original layout and the paper background.",
-  "Return only the cleaned image.",
+  "You are a careful, CONSERVATIVE photo retoucher.",
+  "This is a photo of a PRINTED math exam with a student's handwriting on it.",
+  "Remove ONLY the student's handwritten additions: pencil/pen handwriting, scribbles,",
+  "circles, underlines, check marks and drawn marks.",
+  "CRITICAL: Preserve ALL printed content — every problem number, question text, number,",
+  "fraction, equation, math symbol, figure, diagram, table and box. NEVER erase, blank out,",
+  "white-out, or empty any region of the printed problems.",
+  "If you are unsure whether something is printed or handwritten, KEEP IT.",
+  "It is much better to leave a faint mark than to delete printed content.",
+  "Do NOT change, add, move, crop, or rewrite anything. Keep the exact original layout,",
+  "all printed text, and the paper background unchanged.",
+  "Return only the cleaned image, same size and framing as the input.",
 ].join(" ");
 
 export async function POST(req: Request) {

@@ -79,10 +79,11 @@ export default function ExamsPage() {
   const [cleanedDataUrl, setCleanedDataUrl] = useState<string | null>(null);
   const [useCleaned, setUseCleaned] = useState(true);
   const [cleaning, setCleaning] = useState(false);
-  // PDF 낙서 지우기 (페이지별 이미지로 변환 → AI → 다시 PDF로 합침)
+  // PDF 낙서 지우기 (페이지별 이미지로 변환 → AI → 페이지마다 원본/지운본 선택 → PDF로 합침)
   const [pdfPages, setPdfPages] = useState<number>(0);
-  const [cleanedPdfBlob, setCleanedPdfBlob] = useState<Blob | null>(null);
-  const [cleanedPdfPreview, setCleanedPdfPreview] = useState<string | null>(null);
+  const [pdfOriginals, setPdfOriginals] = useState<string[]>([]);
+  const [pdfCleaned, setPdfCleaned] = useState<string[]>([]);
+  const [pageUseClean, setPageUseClean] = useState<boolean[]>([]);
 
   const [title, setTitle] = useState("");
   const [school, setSchool] = useState("");
@@ -121,8 +122,9 @@ export default function ExamsPage() {
     setFileIsPdf(pdf);
     setPreviewUrl(URL.createObjectURL(f));
     setCleanedDataUrl(null);
-    setCleanedPdfBlob(null);
-    setCleanedPdfPreview(null);
+    setPdfOriginals([]);
+    setPdfCleaned([]);
+    setPageUseClean([]);
     setPdfPages(0);
     setUseCleaned(!pdf);
     if (!title.trim()) setTitle(f.name.replace(/\.[^.]+$/, ""));
@@ -162,6 +164,7 @@ export default function ExamsPage() {
     try {
       setProgress("PDF를 페이지로 변환 중…");
       const images = await pdfToImages(file);
+      setPdfOriginals(images);
       const cleaned: string[] = [];
       for (let i = 0; i < images.length; i++) {
         setProgress(`AI 낙서 지우는 중… (${i + 1}/${images.length}페이지)`);
@@ -171,10 +174,8 @@ export default function ExamsPage() {
           cleaned.push(images[i]); // 한 페이지 실패하면 원본 페이지 유지
         }
       }
-      setProgress("PDF로 다시 합치는 중…");
-      const blob = await imagesToPdfBlob(cleaned);
-      setCleanedPdfBlob(blob);
-      setCleanedPdfPreview(cleaned[0] ?? null);
+      setPdfCleaned(cleaned);
+      setPageUseClean(cleaned.map(() => true));
       setUseCleaned(true);
     } catch (e) {
       setError(`PDF 낙서 지우기 실패: ${e instanceof Error ? e.message : "오류"}`);
@@ -189,8 +190,9 @@ export default function ExamsPage() {
     setFileIsPdf(false);
     setPreviewUrl(null);
     setCleanedDataUrl(null);
-    setCleanedPdfBlob(null);
-    setCleanedPdfPreview(null);
+    setPdfOriginals([]);
+    setPdfCleaned([]);
+    setPageUseClean([]);
     setPdfPages(0);
     setUseCleaned(true);
     setTitle("");
@@ -213,8 +215,10 @@ export default function ExamsPage() {
       let blob: Blob = file;
       let ext = file.name.split(".").pop() || (fileIsPdf ? "pdf" : "jpg");
       let contentType = file.type || (fileIsPdf ? "application/pdf" : "image/jpeg");
-      if (fileIsPdf && useCleaned && cleanedPdfBlob) {
-        blob = cleanedPdfBlob; // 낙서 지운 PDF
+      if (fileIsPdf && useCleaned && pdfCleaned.length) {
+        // 페이지마다 선택된(원본/지운본) 이미지를 모아 한 PDF로 합침
+        const chosen = pdfCleaned.map((c, i) => (pageUseClean[i] ? c : pdfOriginals[i]));
+        blob = await imagesToPdfBlob(chosen);
         ext = "pdf";
         contentType = "application/pdf";
       } else if (!fileIsPdf && useCleaned && cleanedDataUrl) {
@@ -353,29 +357,33 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
             ) : (
               <>
                 {fileIsPdf ? (
-                  useCleaned && cleanedPdfPreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={cleanedPdfPreview} alt="낙서 지운 미리보기" style={{ width: "100%", maxHeight: 360, objectFit: "contain", borderRadius: 10, background: "var(--bg-soft)" }} />
-                  ) : (
+                  pdfCleaned.length === 0 ? (
                     <div style={{ width: "100%", height: 200, borderRadius: 10, background: "var(--bg-soft)", border: "1px solid var(--line)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
                       <span style={{ fontSize: 44 }}>📄</span>
                       <span style={{ fontWeight: 700 }}>PDF 파일{pdfPages ? ` · ${pdfPages}페이지` : ""}</span>
                       <span className="muted" style={{ fontSize: 12 }}>{file?.name}</span>
                     </div>
-                  )
+                  ) : null
                 ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={shownImg ?? undefined} alt="미리보기" style={{ width: "100%", maxHeight: 360, objectFit: "contain", borderRadius: 10, background: "var(--bg-soft)" }} />
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={shownImg ?? undefined} alt="미리보기" style={{ width: "100%", maxHeight: 360, objectFit: "contain", borderRadius: 10, background: "var(--bg-soft)" }} />
+                    {cleanedDataUrl && (
+                      <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                        {useCleaned ? "지운 결과예요." : "원본이에요."} <b>「낙서 지운 버전 사용」</b> 체크를 켜고 끄며 원본과 비교해 보세요. 너무 많이 지워졌으면 체크를 끄면 원본 그대로 저장돼요.
+                      </p>
+                    )}
+                  </>
                 )}
                 <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()} disabled={cleaning}>🖼 다른 파일</button>
                   {!fileIsPdf && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={cleanImage} disabled={cleaning}>{cleaning ? "AI 지우는 중…" : "🤖 AI 낙서 지우기"}</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={cleanImage} disabled={cleaning}>{cleaning ? "AI 지우는 중…" : cleanedDataUrl ? "🤖 다시 지우기" : "🤖 AI 낙서 지우기"}</button>
                   )}
                   {fileIsPdf && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={cleanPdf} disabled={cleaning}>{cleaning ? progress || "처리 중…" : cleanedPdfBlob ? "🤖 다시 지우기" : "🤖 PDF 낙서 지우기"}</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={cleanPdf} disabled={cleaning}>{cleaning ? progress || "처리 중…" : pdfCleaned.length ? "🤖 다시 지우기" : "🤖 PDF 낙서 지우기"}</button>
                   )}
-                  {((!fileIsPdf && cleanedDataUrl) || (fileIsPdf && cleanedPdfBlob)) && (
+                  {((!fileIsPdf && cleanedDataUrl) || (fileIsPdf && pdfCleaned.length > 0)) && (
                     <label className="row" style={{ gap: 6, fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
                       <input type="checkbox" checked={useCleaned} onChange={(e) => setUseCleaned(e.target.checked)} />
                       낙서 지운 버전 사용
@@ -384,7 +392,42 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                   <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.pdf" onChange={onPickFile} style={{ display: "none" }} />
                 </div>
                 {fileIsPdf && cleaning && progress && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>⏳ {progress}</div>}
-                {fileIsPdf && !cleanedPdfBlob && !cleaning && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>PDF의 낙서를 지우면 페이지마다 AI가 처리해요{pdfPages ? ` (총 ${pdfPages}페이지, 약 ${pdfPages * 55}원)` : ""}. 안 지우고 그대로 보관해도 돼요.</p>}
+                {fileIsPdf && pdfCleaned.length === 0 && !cleaning && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>PDF의 낙서를 지우면 페이지마다 AI가 처리해요{pdfPages ? ` (총 ${pdfPages}페이지, 약 ${pdfPages * 55}원)` : ""}. 안 지우고 그대로 보관해도 돼요.</p>}
+
+                {/* PDF 페이지별 비교 — 너무 많이 지워진 페이지는 '원본'으로 되돌리기 */}
+                {fileIsPdf && pdfCleaned.length > 0 && useCleaned && (
+                  <div className="card flat" style={{ padding: 12, marginTop: 12, background: "var(--bg-soft)" }}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontWeight: 800, fontSize: 14 }}>페이지별 확인 ({pageUseClean.filter(Boolean).length}/{pdfCleaned.length} 지운본)</span>
+                      <div className="row" style={{ gap: 6 }}>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPageUseClean(pdfCleaned.map(() => false))}>전체 원본</button>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPageUseClean(pdfCleaned.map(() => true))}>전체 지운본</button>
+                      </div>
+                    </div>
+                    <p className="muted" style={{ fontSize: 12, margin: "0 0 10px" }}>지운 후 문제까지 사라진 페이지가 있으면 그 페이지의 <b>「원본」</b>을 눌러 되돌리세요. 고른 대로 저장돼요.</p>
+                    <div className="stack" style={{ gap: 12 }}>
+                      {pdfCleaned.map((c, i) => {
+                        const useClean = pageUseClean[i];
+                        const opt = (label: string, src: string, sel: boolean, onSel: () => void) => (
+                          <button type="button" onClick={onSel} style={{ flex: 1, minWidth: 0, padding: 4, borderRadius: 8, cursor: "pointer", background: "#fff", border: `2px solid ${sel ? "var(--accent)" : "var(--line)"}`, boxShadow: sel ? "0 0 0 2px rgba(63,110,165,0.15)" : "none" }}>
+                            <div className="row" style={{ justifyContent: "center", gap: 4, fontSize: 11, fontWeight: 700, marginBottom: 4, color: sel ? "var(--accent-ink)" : "var(--faint)" }}>{sel ? "✓ " : ""}{label}</div>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={src} alt={label} style={{ width: "100%", height: 150, objectFit: "contain", background: "var(--bg-soft)", borderRadius: 4 }} />
+                          </button>
+                        );
+                        return (
+                          <div key={i}>
+                            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{i + 1}페이지</div>
+                            <div className="row" style={{ gap: 8, alignItems: "stretch" }}>
+                              {opt("원본", pdfOriginals[i], !useClean, () => setPageUseClean((prev) => prev.map((v, k) => (k === i ? false : v))))}
+                              {opt("지운 후", c, useClean, () => setPageUseClean((prev) => prev.map((v, k) => (k === i ? true : v))))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* 구분 정보 */}
                 <div className="field" style={{ marginTop: 16 }}>
