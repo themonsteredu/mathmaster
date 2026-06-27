@@ -75,6 +75,33 @@ export default function StudentsPage() {
     }
   }
 
+  // 명단에 없는 학생(고아) 오답 정리
+  const rosterNames = new Set(students.map((s) => s.name));
+  const orphanNames = Array.from(new Set(problems.map((p) => p.student_name))).filter((n) => !rosterNames.has(n));
+
+  async function cleanupOrphans() {
+    if (orphanNames.length === 0) return;
+    if (!confirm(`명단에 없는 학생(${orphanNames.join(", ")})의 오답 문항을 모두 삭제할까요?\n(되돌릴 수 없어요)`)) return;
+    setError("");
+    setProblems((prev) => prev.filter((p) => rosterNames.has(p.student_name)));
+    try {
+      for (const name of orphanNames) {
+        const { data: probs } = await supabase.from("wrong_problems").select("id").eq("student_name", name);
+        const ids = ((probs as { id: string }[]) ?? []).map((p) => p.id);
+        if (ids.length) await supabase.from("solution_logs").delete().in("problem_id", ids);
+        await supabase.from("wrong_problems").delete().eq("student_name", name);
+        await supabase.from("completions").delete().eq("student_name", name);
+      }
+      // 정말 지워졌는지 확인
+      const { data: after } = await supabase.from("wrong_problems").select("student_name");
+      const remain = ((after as { student_name: string }[]) ?? []).some((p) => !rosterNames.has(p.student_name));
+      if (remain) setError("일부가 안 지워졌어요. Supabase 삭제 권한(정책) 문제일 수 있어요 — 알려주시면 고칠 SQL을 드릴게요.");
+    } catch (e) {
+      setError(`정리 실패: ${e instanceof Error ? e.message : "오류"}`);
+    }
+    load();
+  }
+
   const grades = ["전체", ...Array.from(new Set(students.map((s) => s.grade).filter(Boolean) as string[]))];
   const filtered = students.filter(
     (s) => (gradeFilter === "전체" || s.grade === gradeFilter) && (q === "" || s.name.includes(q)),
@@ -102,6 +129,13 @@ export default function StudentsPage() {
       />
 
       {error && <div className="alert alert-err">{error}</div>}
+
+      {orphanNames.length > 0 && (
+        <div className="alert alert-err" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span>명단에 없는 학생(<b>{orphanNames.join(", ")}</b>)의 오답이 남아 있어요. 시험지 등에 계속 보여요.</span>
+          <button className="btn btn-primary btn-sm" onClick={cleanupOrphans}>🧹 정리하기</button>
+        </div>
+      )}
 
       {adding && (
         <div className="card" style={{ padding: 18, marginBottom: 16 }}>
