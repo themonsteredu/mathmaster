@@ -9,6 +9,7 @@ import {
   IconDashboard,
   IconRegister,
   IconBook,
+  IconBox,
   IconStudent,
   IconSettings,
   IconLogout,
@@ -38,6 +39,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   const nav: NavItem[] = [
     { href: "/admin", label: "대시보드", icon: IconDashboard },
+    { href: "/gallery", label: "문항 보기", icon: IconBox },
     { href: "/upload", label: "오답 등록", icon: IconRegister },
     { href: "/worksheet", label: "시험지 만들기", icon: IconBook, count: counts.due },
     { href: "/students", label: "학생 관리", icon: IconStudent, count: counts.students },
