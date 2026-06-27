@@ -32,6 +32,11 @@ function fileToBase64(file: File): Promise<{ data: string; mimeType: string }> {
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   return (await fetch(dataUrl)).blob();
 }
+async function urlToFile(url: string, pdf: boolean): Promise<File> {
+  const blob = await (await fetch(url)).blob();
+  const type = blob.type || (pdf ? "application/pdf" : "image/jpeg");
+  return new File([blob], pdf ? "exam.pdf" : "exam.jpg", { type });
+}
 function ymd(iso: string) {
   const d = new Date(iso);
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
@@ -84,6 +89,10 @@ export default function ExamsPage() {
   const [pdfOriginals, setPdfOriginals] = useState<string[]>([]);
   const [pdfCleaned, setPdfCleaned] = useState<string[]>([]);
   const [pageUseClean, setPageUseClean] = useState<boolean[]>([]);
+  // 저장된 시험지 수정 모드 (있으면 새로 만들지 않고 그 항목을 덮어씀)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // 저장 전 최종 미리보기 (실제 저장될 페이지들)
+  const [confirmImages, setConfirmImages] = useState<string[] | null>(null);
 
   const [title, setTitle] = useState("");
   const [school, setSchool] = useState("");
@@ -202,34 +211,84 @@ export default function ExamsPage() {
     setExamType("");
     setYear(THIS_YEAR);
     setAdding(false);
+    setEditingId(null);
+    setConfirmImages(null);
+  }
+
+  // 저장된 시험지를 다시 열어 수정 (재정리·정보 변경)
+  async function startEdit(p: ExamPaper) {
+    setError("");
+    const pdf = isPdf(p);
+    setViewing(null);
+    setEditingId(p.id);
+    setAdding(true);
+    setTitle(p.title);
+    setSchool(p.school ?? "");
+    setGrade(p.grade ?? null);
+    setTerm(p.term ?? null);
+    setExamType(p.exam_type ?? "");
+    setYear(p.year ?? THIS_YEAR);
+    setFileIsPdf(pdf);
+    setPreviewUrl(p.image_url);
+    setCleanedDataUrl(null);
+    setPdfOriginals([]);
+    setPdfCleaned([]);
+    setPageUseClean([]);
+    setUseCleaned(!pdf);
+    setFile(null);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    try {
+      const f = await urlToFile(p.image_url, pdf);
+      setFile(f);
+      if (pdf) pdfPageCount(f).then(setPdfPages).catch(() => setPdfPages(0));
+    } catch {
+      setError("원본 파일을 불러오지 못했어요. 인터넷 상태를 확인하고 다시 시도해 주세요.");
+    }
+  }
+
+  // 실제로 저장될 최종 페이지 이미지들 (확인용)
+  function finalImages(): string[] {
+    if (fileIsPdf && useCleaned && pdfCleaned.length) return pdfCleaned.map((c, i) => (pageUseClean[i] ? c : pdfOriginals[i]));
+    if (!fileIsPdf && useCleaned && cleanedDataUrl) return [cleanedDataUrl];
+    if (!fileIsPdf && previewUrl) return [previewUrl];
+    return pdfOriginals;
   }
 
   async function save() {
     setError("");
-    if (!file) return setError("시험지 사진 또는 PDF를 먼저 골라 주세요.");
+    setConfirmImages(null);
+    if (!file && !editingId) return setError("시험지 사진 또는 PDF를 먼저 골라 주세요.");
     const finalTitle = title.trim() || autoTitle({ year, school, grade, term, exam_type: examType });
     if (!finalTitle) return setError("제목을 입력하거나 학교·학년·시험을 골라 주세요. (나중에 찾을 때 써요)");
     setBusy(true);
     try {
-      setProgress(fileIsPdf ? "PDF 올리는 중…" : "사진 올리는 중…");
-      let blob: Blob = file;
-      let ext = file.name.split(".").pop() || (fileIsPdf ? "pdf" : "jpg");
-      let contentType = file.type || (fileIsPdf ? "application/pdf" : "image/jpeg");
-      if (fileIsPdf && useCleaned && pdfCleaned.length) {
-        // 페이지마다 선택된(원본/지운본) 이미지를 모아 한 PDF로 합침
-        const chosen = pdfCleaned.map((c, i) => (pageUseClean[i] ? c : pdfOriginals[i]));
-        blob = await imagesToPdfBlob(chosen);
-        ext = "pdf";
-        contentType = "application/pdf";
-      } else if (!fileIsPdf && useCleaned && cleanedDataUrl) {
-        blob = await dataUrlToBlob(cleanedDataUrl);
-        ext = "png";
-        contentType = "image/png";
+      // 새 이미지를 만들어 올려야 하는 경우인지 판단
+      const newPdf = fileIsPdf && useCleaned && pdfCleaned.length > 0;
+      const newImg = !fileIsPdf && useCleaned && !!cleanedDataUrl;
+      const needUpload = newPdf || newImg || !editingId; // 새로 만들 땐 항상 업로드
+
+      let imageUrl = previewUrl || ""; // 수정인데 파일을 안 바꾸면 기존 URL 유지
+      if (needUpload) {
+        if (!file) throw new Error("파일을 불러오는 중이에요. 잠시 후 다시 눌러 주세요.");
+        setProgress(fileIsPdf ? "PDF 올리는 중…" : "사진 올리는 중…");
+        let blob: Blob = file;
+        let ext = file.name.split(".").pop() || (fileIsPdf ? "pdf" : "jpg");
+        let contentType = file.type || (fileIsPdf ? "application/pdf" : "image/jpeg");
+        if (newPdf) {
+          const chosen = pdfCleaned.map((c, i) => (pageUseClean[i] ? c : pdfOriginals[i]));
+          blob = await imagesToPdfBlob(chosen);
+          ext = "pdf";
+          contentType = "application/pdf";
+        } else if (newImg) {
+          blob = await dataUrlToBlob(cleanedDataUrl!);
+          ext = "png";
+          contentType = "image/png";
+        }
+        const path = `exams/${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType });
+        if (upErr) throw new Error("업로드 실패: " + upErr.message);
+        imageUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
       }
-      const path = `exams/${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType });
-      if (upErr) throw new Error("업로드 실패: " + upErr.message);
-      const imageUrl = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
 
       setProgress("저장 중…");
       const full = {
@@ -243,23 +302,33 @@ export default function ExamsPage() {
         year,
         file_type: fileIsPdf ? "pdf" : "image",
       };
-      let { error: insErr } = await supabase.from("exam_papers").insert(full);
-      // 새 칸이 아직 없으면 기본 칸만으로 재시도 (마이그레이션 전에도 동작)
-      if (insErr && /school|grade|term|exam_type|year|file_type|column/.test(insErr.message || "")) {
-        ({ error: insErr } = await supabase.from("exam_papers").insert({ title: finalTitle, category: full.category, image_url: imageUrl }));
-        if (!insErr) {
-          setError("저장됐어요. 다만 '학교·학기·시험' 구분 칸이 아직 없어 그 정보는 빠졌어요. Supabase에 안내된 SQL을 한 번 실행하면 다음부턴 모두 저장돼요.");
-          resetForm();
-          load();
-          return;
+      const base = { title: finalTitle, category: full.category, image_url: imageUrl };
+
+      if (editingId) {
+        let { error: upd } = await supabase.from("exam_papers").update(full).eq("id", editingId);
+        if (upd && /school|grade|term|exam_type|year|file_type|column/.test(upd.message || "")) {
+          ({ error: upd } = await supabase.from("exam_papers").update(base).eq("id", editingId));
         }
-      }
-      if (insErr) {
-        if (/exam_papers|relation|does not exist/.test(insErr.message || "")) {
-          setNeedSql(true);
-          throw new Error("아직 '기출 시험지' 보관함 표가 Supabase에 없어요. 아래 안내 SQL을 한 번 실행해 주세요.");
+        if (upd) throw new Error(upd.message);
+      } else {
+        let { error: insErr } = await supabase.from("exam_papers").insert(full);
+        // 새 칸이 아직 없으면 기본 칸만으로 재시도 (마이그레이션 전에도 동작)
+        if (insErr && /school|grade|term|exam_type|year|file_type|column/.test(insErr.message || "")) {
+          ({ error: insErr } = await supabase.from("exam_papers").insert(base));
+          if (!insErr) {
+            setError("저장됐어요. 다만 '학교·학기·시험' 구분 칸이 아직 없어 그 정보는 빠졌어요. Supabase에 안내된 SQL을 한 번 실행하면 다음부턴 모두 저장돼요.");
+            resetForm();
+            load();
+            return;
+          }
         }
-        throw new Error(insErr.message);
+        if (insErr) {
+          if (/exam_papers|relation|does not exist/.test(insErr.message || "")) {
+            setNeedSql(true);
+            throw new Error("아직 '기출 시험지' 보관함 표가 Supabase에 없어요. 아래 안내 SQL을 한 번 실행해 주세요.");
+          }
+          throw new Error(insErr.message);
+        }
       }
       resetForm();
       load();
@@ -347,6 +416,12 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
 
         {adding && (
           <div className="card" style={{ padding: 20, marginBottom: 16, maxWidth: 640 }}>
+            {editingId && (
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
+                <span style={{ fontWeight: 800, fontSize: 15 }}>✏️ 시험지 수정 중</span>
+                <span className="muted" style={{ fontSize: 12 }}>저장하면 이 시험지가 바뀐 내용으로 덮어써져요</span>
+              </div>
+            )}
             {!previewUrl ? (
               <label className="upload-area" style={{ width: "100%" }}>
                 <span style={{ color: "var(--muted)", marginBottom: 8 }}><IconCamera size={34} /></span>
@@ -472,8 +547,9 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                   {!title.trim() && previewTitle && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>자동 제목: <b>{previewTitle}</b></p>}
                 </div>
 
-                <div className="row" style={{ gap: 8, marginTop: 8 }}>
-                  <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? progress || "저장 중…" : "📥 보관함에 저장"}</button>
+                <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  <button className="btn btn-secondary" onClick={() => setConfirmImages(finalImages())} disabled={busy || finalImages().length === 0}>👁 저장 전 미리보기</button>
+                  <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? progress || "저장 중…" : editingId ? "💾 수정 저장(덮어쓰기)" : "📥 보관함에 저장"}</button>
                   <button className="btn btn-secondary" onClick={resetForm} disabled={busy}>취소</button>
                 </div>
               </>
@@ -564,6 +640,7 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                 ) : (
                   <button className="btn btn-primary btn-sm" onClick={() => window.print()}>🖨️ 인쇄 / PDF</button>
                 )}
+                <button className="btn btn-secondary btn-sm" onClick={() => startEdit(viewing)}>✏️ 수정</button>
                 <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger-ink)" }} onClick={() => remove(viewing)}>삭제</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setViewing(null)}>닫기</button>
               </div>
@@ -574,6 +651,31 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
               // eslint-disable-next-line @next/next/no-img-element
               <img src={viewing.image_url} alt={viewing.title} style={{ width: "100%", borderRadius: 8, background: "var(--bg-soft)" }} />
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 저장 전 최종 확인 — 실제로 저장될 모습 그대로 */}
+      {confirmImages && (
+        <div className="no-print" onClick={() => setConfirmImages(null)} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(15,23,42,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div className="card" style={{ padding: 16, maxWidth: 720, width: "100%", maxHeight: "94vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+            <div className="row" style={{ justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 800, fontSize: 16 }}>저장 전 확인 {confirmImages.length > 1 ? `(${confirmImages.length}페이지)` : ""}</span>
+              <div className="row" style={{ gap: 6 }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setConfirmImages(null)} disabled={busy}>← 더 고치기</button>
+                <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? progress || "저장 중…" : "✅ 이대로 저장"}</button>
+              </div>
+            </div>
+            <p className="muted" style={{ fontSize: 12, margin: "0 0 10px" }}>아래가 실제로 저장될 모습이에요. 문제가 지워졌으면 「더 고치기」로 돌아가 그 페이지를 「원본」으로 바꾸세요.</p>
+            <div className="stack" style={{ gap: 10 }}>
+              {confirmImages.map((src, i) => (
+                <div key={i}>
+                  {confirmImages.length > 1 && <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{i + 1}페이지</div>}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={`${i + 1}`} style={{ width: "100%", borderRadius: 8, border: "1px solid var(--line)", background: "#fff" }} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
