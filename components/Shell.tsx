@@ -111,16 +111,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="main">
-        <header className="topbar">
-          <div className="topbar-inner">
-            <button className="brand" onClick={() => router.push("/admin")}>
-              <span className="brand-mark"><AcademyLogo size={24} /></span>
-              <span style={{ color: "var(--ink)" }}>오답Master</span>
-            </button>
-            <span className="topbar-spacer" />
-          </div>
-        </header>
-
         <div className="content">{children}</div>
       </div>
 
