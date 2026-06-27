@@ -1,5 +1,18 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;600;700&display=swap");
 
+@font-face {
+  font-family: "Maplestory";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2206-2@1.0/MaplestoryOTFLight.woff") format("woff");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Maplestory";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2206-2@1.0/MaplestoryOTFBold.woff") format("woff");
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   --bg: #faf8f4;
   --bg-soft: #f3efe8;
@@ -748,6 +761,7 @@ a {
   margin: 0 auto 18px;
   width: 210mm;
   max-width: 100%;
+  font-family: "Maplestory", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }
 .ws-head {
   display: flex;
@@ -758,8 +772,8 @@ a {
   margin-bottom: 10px;
 }
 .ws-head .t {
-  font-family: var(--font-serif);
-  font-size: 16px;
+  font-family: "Maplestory", var(--font-serif);
+  font-size: 19px;
   font-weight: 700;
 }
 .ws-grid {
@@ -777,21 +791,22 @@ a {
 }
 .ws-cell-head {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  font-size: 11px;
-  color: #444;
+  font-size: 15px;
+  font-weight: 700;
+  color: #333;
   margin-bottom: 6px;
 }
 .ws-no {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--ink);
   color: #fff;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 800;
 }
 .ws-img {
