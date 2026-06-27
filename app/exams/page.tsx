@@ -5,6 +5,7 @@ import { supabase, PHOTO_BUCKET } from "@/lib/supabase";
 import { PageHeader } from "@/components/ui";
 import { IconCamera, IconSearch } from "@/components/icons";
 import { AcademyLogo } from "@/components/Logo";
+import { pdfToImages, imagesToPdfBlob, pdfPageCount } from "@/lib/pdf";
 
 type ExamPaper = {
   id: string;
@@ -78,6 +79,10 @@ export default function ExamsPage() {
   const [cleanedDataUrl, setCleanedDataUrl] = useState<string | null>(null);
   const [useCleaned, setUseCleaned] = useState(true);
   const [cleaning, setCleaning] = useState(false);
+  // PDF 낙서 지우기 (페이지별 이미지로 변환 → AI → 다시 PDF로 합침)
+  const [pdfPages, setPdfPages] = useState<number>(0);
+  const [cleanedPdfBlob, setCleanedPdfBlob] = useState<Blob | null>(null);
+  const [cleanedPdfPreview, setCleanedPdfPreview] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [school, setSchool] = useState("");
@@ -116,9 +121,20 @@ export default function ExamsPage() {
     setFileIsPdf(pdf);
     setPreviewUrl(URL.createObjectURL(f));
     setCleanedDataUrl(null);
+    setCleanedPdfBlob(null);
+    setCleanedPdfPreview(null);
+    setPdfPages(0);
     setUseCleaned(!pdf);
     if (!title.trim()) setTitle(f.name.replace(/\.[^.]+$/, ""));
     e.target.value = "";
+    if (pdf) pdfPageCount(f).then(setPdfPages).catch(() => setPdfPages(0));
+  }
+
+  async function cleanOneImage(dataUrl: string, mimeType: string): Promise<string> {
+    const res = await fetch("/api/clean-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: dataUrl.split(",")[1], mimeType }) });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || "처리 실패");
+    return `data:${j.mimeType};base64,${j.image}`;
   }
 
   async function cleanImage() {
@@ -127,10 +143,7 @@ export default function ExamsPage() {
     setError("");
     try {
       const { data, mimeType } = await fileToBase64(file);
-      const res = await fetch("/api/clean-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data, mimeType }) });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "처리 실패");
-      setCleanedDataUrl(`data:${j.mimeType};base64,${j.image}`);
+      setCleanedDataUrl(await cleanOneImage(`data:${mimeType};base64,${data}`, mimeType));
       setUseCleaned(true);
     } catch (e) {
       setError(`낙서 지우기 실패: ${e instanceof Error ? e.message : "오류"}`);
@@ -139,11 +152,46 @@ export default function ExamsPage() {
     }
   }
 
+  // PDF 낙서 지우기: 페이지 → 이미지 → AI 지우기 → 다시 PDF로 합침
+  async function cleanPdf() {
+    if (!file || !fileIsPdf) return;
+    const pages = pdfPages || (await pdfPageCount(file).catch(() => 1));
+    if (!confirm(`이 PDF는 ${pages}페이지예요.\n페이지마다 AI가 낙서를 지워요 (페이지당 약 55원, 총 약 ${pages * 55}원).\n진행할까요?`)) return;
+    setCleaning(true);
+    setError("");
+    try {
+      setProgress("PDF를 페이지로 변환 중…");
+      const images = await pdfToImages(file);
+      const cleaned: string[] = [];
+      for (let i = 0; i < images.length; i++) {
+        setProgress(`AI 낙서 지우는 중… (${i + 1}/${images.length}페이지)`);
+        try {
+          cleaned.push(await cleanOneImage(images[i], "image/jpeg"));
+        } catch {
+          cleaned.push(images[i]); // 한 페이지 실패하면 원본 페이지 유지
+        }
+      }
+      setProgress("PDF로 다시 합치는 중…");
+      const blob = await imagesToPdfBlob(cleaned);
+      setCleanedPdfBlob(blob);
+      setCleanedPdfPreview(cleaned[0] ?? null);
+      setUseCleaned(true);
+    } catch (e) {
+      setError(`PDF 낙서 지우기 실패: ${e instanceof Error ? e.message : "오류"}`);
+    } finally {
+      setCleaning(false);
+      setProgress("");
+    }
+  }
+
   function resetForm() {
     setFile(null);
     setFileIsPdf(false);
     setPreviewUrl(null);
     setCleanedDataUrl(null);
+    setCleanedPdfBlob(null);
+    setCleanedPdfPreview(null);
+    setPdfPages(0);
     setUseCleaned(true);
     setTitle("");
     setSchool("");
@@ -165,7 +213,11 @@ export default function ExamsPage() {
       let blob: Blob = file;
       let ext = file.name.split(".").pop() || (fileIsPdf ? "pdf" : "jpg");
       let contentType = file.type || (fileIsPdf ? "application/pdf" : "image/jpeg");
-      if (!fileIsPdf && useCleaned && cleanedDataUrl) {
+      if (fileIsPdf && useCleaned && cleanedPdfBlob) {
+        blob = cleanedPdfBlob; // 낙서 지운 PDF
+        ext = "pdf";
+        contentType = "application/pdf";
+      } else if (!fileIsPdf && useCleaned && cleanedDataUrl) {
         blob = await dataUrlToBlob(cleanedDataUrl);
         ext = "png";
         contentType = "image/png";
@@ -301,29 +353,38 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
             ) : (
               <>
                 {fileIsPdf ? (
-                  <div style={{ width: "100%", height: 200, borderRadius: 10, background: "var(--bg-soft)", border: "1px solid var(--line)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                    <span style={{ fontSize: 44 }}>📄</span>
-                    <span style={{ fontWeight: 700 }}>PDF 파일</span>
-                    <span className="muted" style={{ fontSize: 12 }}>{file?.name}</span>
-                  </div>
+                  useCleaned && cleanedPdfPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cleanedPdfPreview} alt="낙서 지운 미리보기" style={{ width: "100%", maxHeight: 360, objectFit: "contain", borderRadius: 10, background: "var(--bg-soft)" }} />
+                  ) : (
+                    <div style={{ width: "100%", height: 200, borderRadius: 10, background: "var(--bg-soft)", border: "1px solid var(--line)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                      <span style={{ fontSize: 44 }}>📄</span>
+                      <span style={{ fontWeight: 700 }}>PDF 파일{pdfPages ? ` · ${pdfPages}페이지` : ""}</span>
+                      <span className="muted" style={{ fontSize: 12 }}>{file?.name}</span>
+                    </div>
+                  )
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={shownImg ?? undefined} alt="미리보기" style={{ width: "100%", maxHeight: 360, objectFit: "contain", borderRadius: 10, background: "var(--bg-soft)" }} />
                 )}
                 <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>🖼 다른 파일</button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()} disabled={cleaning}>🖼 다른 파일</button>
                   {!fileIsPdf && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={cleanImage} disabled={cleaning}>{cleaning ? "AI 지우는 중…" : "🤖 AI 낙서 지우기"}</button>
                   )}
-                  {!fileIsPdf && cleanedDataUrl && (
+                  {fileIsPdf && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={cleanPdf} disabled={cleaning}>{cleaning ? progress || "처리 중…" : cleanedPdfBlob ? "🤖 다시 지우기" : "🤖 PDF 낙서 지우기"}</button>
+                  )}
+                  {((!fileIsPdf && cleanedDataUrl) || (fileIsPdf && cleanedPdfBlob)) && (
                     <label className="row" style={{ gap: 6, fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
                       <input type="checkbox" checked={useCleaned} onChange={(e) => setUseCleaned(e.target.checked)} />
                       낙서 지운 버전 사용
                     </label>
                   )}
-                  {fileIsPdf && <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>PDF는 낙서 지우기를 지원하지 않아요 (그대로 보관)</span>}
                   <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.pdf" onChange={onPickFile} style={{ display: "none" }} />
                 </div>
+                {fileIsPdf && cleaning && progress && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>⏳ {progress}</div>}
+                {fileIsPdf && !cleanedPdfBlob && !cleaning && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>PDF의 낙서를 지우면 페이지마다 AI가 처리해요{pdfPages ? ` (총 ${pdfPages}페이지, 약 ${pdfPages * 55}원)` : ""}. 안 지우고 그대로 보관해도 돼요.</p>}
 
                 {/* 구분 정보 */}
                 <div className="field" style={{ marginTop: 16 }}>
