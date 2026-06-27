@@ -337,16 +337,16 @@ export default function UploadPage() {
         );
       })()}
 
-      {pageSrc && <MultiCropModal src={pageSrc} onAdd={addCrop} onClose={() => setPageSrc(null)} />}
+      {pageSrc && <MultiCropModal src={pageSrc} onAdd={addCrop} onUndo={() => setItems((prev) => prev.slice(0, -1))} onClose={() => setPageSrc(null)} />}
     </>
   );
 }
 
-function MultiCropModal({ src, onAdd, onClose }: { src: string; onAdd: (dataUrl: string) => void | Promise<void>; onClose: () => void }) {
+function MultiCropModal({ src, onAdd, onUndo, onClose }: { src: string; onAdd: (dataUrl: string) => void | Promise<void>; onUndo: () => void; onClose: () => void }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [rect, setRect] = useState<Rect | null>(null);
   const [start, setStart] = useState<{ x: number; y: number } | null>(null);
-  const [added, setAdded] = useState<string[]>([]);
+  const [boxes, setBoxes] = useState<Rect[]>([]); // 확정된 영역(번호 박스)
 
   function pos(e: React.PointerEvent) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -365,53 +365,55 @@ function MultiCropModal({ src, onAdd, onClose }: { src: string; onAdd: (dataUrl:
   }
   function up() {
     setStart(null);
-  }
-  function addCurrent() {
-    const img = imgRef.current;
-    if (!img || !rect || rect.w < 8 || rect.h < 8) return;
-    const sx = img.naturalWidth / img.clientWidth;
-    const sy = img.naturalHeight / img.clientHeight;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(rect.w * sx));
-    canvas.height = Math.max(1, Math.round(rect.h * sy));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(img, rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/png");
-    onAdd(dataUrl);
-    setAdded((a) => [...a, dataUrl]);
+    // 드래그가 충분히 크면 자동으로 문항 추가
+    if (rect && rect.w > 16 && rect.h > 16) {
+      const img = imgRef.current;
+      if (img) {
+        const sx = img.naturalWidth / img.clientWidth;
+        const sy = img.naturalHeight / img.clientHeight;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(rect.w * sx));
+        canvas.height = Math.max(1, Math.round(rect.h * sy));
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy, 0, 0, canvas.width, canvas.height);
+          onAdd(canvas.toDataURL("image/png"));
+          setBoxes((b) => [...b, rect]);
+        }
+      }
+    }
     setRect(null);
   }
+  function undoLast() {
+    if (boxes.length === 0) return;
+    setBoxes((b) => b.slice(0, -1));
+    onUndo();
+  }
 
-  // 바깥(어두운 영역) 클릭으로는 닫히지 않게 — 드래그가 가장자리에서 끝나도 안 닫힘
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(15,23,42,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div className="card" style={{ padding: 16, maxWidth: 620, width: "100%", maxHeight: "92vh", overflow: "auto" }}>
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
           <span style={{ fontWeight: 800 }}>한 페이지에서 여러 문항 자르기</span>
-          <button className="btn btn-primary btn-sm" onClick={onClose}>완료 ({added.length})</button>
+          <button className="btn btn-primary btn-sm" onClick={onClose}>완료 ({boxes.length})</button>
         </div>
         <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-          문제 하나를 드래그로 감싼 뒤 <b>「이 영역 문항 추가」</b>를 누르세요. <b>여러 번 반복</b>해서 나눌 수 있어요. 다 되면 <b>「완료」</b> → 아래에서 학생 고르고 <b>「등록」 한 번</b>이면 전부 저장돼요.
+          문제 하나를 <b>드래그로 감싸면 자동으로 추가</b>돼요. 16·17·18… 차례로 감싸면 번호 박스가 쌓여요. 다 되면 <b>「완료」</b> → 아래에서 학생 고르고 <b>「등록」 한 번</b>이면 전부 저장돼요.
         </p>
         <div style={{ position: "relative", touchAction: "none", userSelect: "none" }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img ref={imgRef} src={src} alt="" draggable={false} style={{ width: "100%", display: "block", borderRadius: 8 }} />
-          {rect && <div style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.w, height: rect.h, border: "2px solid var(--accent)", background: "rgba(63,110,165,0.18)", pointerEvents: "none" }} />}
-        </div>
-        <button className="btn btn-secondary btn-block" style={{ marginTop: 12 }} onClick={addCurrent} disabled={!rect || rect.w < 8}>✂️ 이 영역 문항 추가</button>
-
-        {added.length > 0 && (
-          <>
-            <div className="label" style={{ marginTop: 14 }}>추가된 문항 {added.length}개</div>
-            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-              {added.map((d, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={d} alt={`${i + 1}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }} />
-              ))}
+          {boxes.map((b, i) => (
+            <div key={i} style={{ position: "absolute", left: b.x, top: b.y, width: b.w, height: b.h, border: "2px solid var(--done-ink)", background: "rgba(47,125,86,0.12)", pointerEvents: "none" }}>
+              <span style={{ position: "absolute", top: -2, left: -2, background: "var(--done-ink)", color: "#fff", fontSize: 11, fontWeight: 800, padding: "1px 6px", borderRadius: 6 }}>{i + 1}</span>
             </div>
-          </>
-        )}
+          ))}
+          {rect && <div style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.w, height: rect.h, border: "2px dashed var(--accent)", background: "rgba(63,110,165,0.18)", pointerEvents: "none" }} />}
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 12, justifyContent: "space-between" }}>
+          <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>추가된 문항: {boxes.length}개</span>
+          <button className="btn btn-secondary btn-sm" onClick={undoLast} disabled={boxes.length === 0}>↩ 마지막 취소</button>
+        </div>
       </div>
     </div>
   );
