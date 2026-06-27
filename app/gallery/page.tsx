@@ -44,6 +44,7 @@ export default function GalleryPage() {
     if (!confirm(`이 문항을 완료 처리하고 삭제할까요?`)) return;
     setProblems((prev) => prev.filter((x) => x.id !== p.id));
     setZoom(null);
+    await supabase.from("completions").insert({ student_name: p.student_name, unit: p.unit, attempts: p.attempts });
     await supabase.from("wrong_problems").delete().eq("id", p.id);
   }
   async function retry(p: DBProblem) {

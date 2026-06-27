@@ -116,3 +116,18 @@ create table if not exists ai_usage (
 alter table ai_usage enable row level security;
 drop policy if exists "allow all - ai_usage" on ai_usage;
 create policy "allow all - ai_usage" on ai_usage for all using (true) with check (true);
+
+-- ============================================================
+-- [추가] 완료 기록 (레포트용) — 완료(삭제) 시 기록을 남김
+-- 아래 전체를 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+create table if not exists completions (
+  id           uuid primary key default gen_random_uuid(),
+  student_name text not null,
+  unit         text,
+  attempts     integer not null default 0,
+  completed_at timestamptz not null default now()
+);
+alter table completions enable row level security;
+drop policy if exists "allow all - completions" on completions;
+create policy "allow all - completions" on completions for all using (true) with check (true);

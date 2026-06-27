@@ -51,6 +51,7 @@ export default function TeacherDashboard() {
   async function complete(p: DBProblem) {
     if (!confirm(`이 문항을 완료 처리하고 삭제할까요?\n(다시 출제되지 않아요)`)) return;
     setProblems((prev) => prev.filter((x) => x.id !== p.id));
+    await supabase.from("completions").insert({ student_name: p.student_name, unit: p.unit, attempts: p.attempts });
     await supabase.from("wrong_problems").delete().eq("id", p.id);
   }
   async function retry(p: DBProblem) {
