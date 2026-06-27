@@ -346,7 +346,7 @@ function MultiCropModal({ src, onAdd, onClose }: { src: string; onAdd: (dataUrl:
   const imgRef = useRef<HTMLImageElement>(null);
   const [rect, setRect] = useState<Rect | null>(null);
   const [start, setStart] = useState<{ x: number; y: number } | null>(null);
-  const [count, setCount] = useState(0);
+  const [added, setAdded] = useState<string[]>([]);
 
   function pos(e: React.PointerEvent) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -377,28 +377,41 @@ function MultiCropModal({ src, onAdd, onClose }: { src: string; onAdd: (dataUrl:
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(img, rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy, 0, 0, canvas.width, canvas.height);
-    onAdd(canvas.toDataURL("image/png"));
-    setCount((c) => c + 1);
+    const dataUrl = canvas.toDataURL("image/png");
+    onAdd(dataUrl);
+    setAdded((a) => [...a, dataUrl]);
     setRect(null);
   }
 
+  // 바깥(어두운 영역) 클릭으로는 닫히지 않게 — 드래그가 가장자리에서 끝나도 안 닫힘
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(15,23,42,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div className="card" style={{ padding: 16, maxWidth: 620, width: "100%", maxHeight: "92vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ fontWeight: 800, marginBottom: 6 }}>한 페이지에서 여러 문항 자르기</div>
-        <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>문제 하나를 드래그로 감싼 뒤 <b>「이 영역 문항 추가」</b>를 누르세요. 여러 번 반복해서 나눈 뒤 <b>「완료」</b> → 아래에서 <b>학생을 고르고 「등록」 한 번</b>이면 전부 한꺼번에 저장돼요.</p>
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(15,23,42,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div className="card" style={{ padding: 16, maxWidth: 620, width: "100%", maxHeight: "92vh", overflow: "auto" }}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontWeight: 800 }}>한 페이지에서 여러 문항 자르기</span>
+          <button className="btn btn-primary btn-sm" onClick={onClose}>완료 ({added.length})</button>
+        </div>
+        <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+          문제 하나를 드래그로 감싼 뒤 <b>「이 영역 문항 추가」</b>를 누르세요. <b>여러 번 반복</b>해서 나눌 수 있어요. 다 되면 <b>「완료」</b> → 아래에서 학생 고르고 <b>「등록」 한 번</b>이면 전부 저장돼요.
+        </p>
         <div style={{ position: "relative", touchAction: "none", userSelect: "none" }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img ref={imgRef} src={src} alt="" draggable={false} style={{ width: "100%", display: "block", borderRadius: 8 }} />
           {rect && <div style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.w, height: rect.h, border: "2px solid var(--accent)", background: "rgba(63,110,165,0.18)", pointerEvents: "none" }} />}
         </div>
-        <div className="row" style={{ gap: 8, marginTop: 14, justifyContent: "space-between", flexWrap: "wrap" }}>
-          <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>추가됨: {count}문항</span>
-          <div className="row" style={{ gap: 8 }}>
-            <button className="btn btn-secondary" onClick={addCurrent} disabled={!rect || rect.w < 8}>✂️ 이 영역 문항 추가</button>
-            <button className="btn btn-primary" onClick={onClose}>완료</button>
-          </div>
-        </div>
+        <button className="btn btn-secondary btn-block" style={{ marginTop: 12 }} onClick={addCurrent} disabled={!rect || rect.w < 8}>✂️ 이 영역 문항 추가</button>
+
+        {added.length > 0 && (
+          <>
+            <div className="label" style={{ marginTop: 14 }}>추가된 문항 {added.length}개</div>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              {added.map((d, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i} src={d} alt={`${i + 1}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

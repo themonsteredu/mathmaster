@@ -56,10 +56,19 @@ export default function StudentsPage() {
     setStudents((prev) => prev.filter((x) => x.id !== s.id));
     setProblems((prev) => prev.filter((p) => p.student_name !== s.name));
     try {
-      await supabase.from("wrong_problems").delete().eq("student_name", s.name);
+      // 1) 이 학생 문항들의 id를 모아 풀이 사진(solution_logs)부터 삭제 (연결 때문에 막히는 것 방지)
+      const { data: probs } = await supabase.from("wrong_problems").select("id").eq("student_name", s.name);
+      const ids = ((probs as { id: string }[]) ?? []).map((p) => p.id);
+      if (ids.length) await supabase.from("solution_logs").delete().in("problem_id", ids);
+
+      // 2) 오답 문항 삭제 (에러 확인!)
+      const { error: e1 } = await supabase.from("wrong_problems").delete().eq("student_name", s.name);
+      if (e1) throw new Error(e1.message);
+
+      // 3) 완료 기록 + 학생 삭제
       await supabase.from("completions").delete().eq("student_name", s.name);
-      const { error } = await supabase.from("students").delete().eq("id", s.id);
-      if (error) throw new Error(error.message);
+      const { error: e2 } = await supabase.from("students").delete().eq("id", s.id);
+      if (e2) throw new Error(e2.message);
     } catch (e) {
       setError(`삭제 중 문제가 생겼어요: ${e instanceof Error ? e.message : "알 수 없는 오류"}`);
       load(); // 실패 시 원상복구
