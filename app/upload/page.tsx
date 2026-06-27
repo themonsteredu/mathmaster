@@ -88,6 +88,40 @@ export default function UploadPage() {
     for (const it of items) if (!it.cleanedDataUrl) await cleanOne(it);
   }
 
+  // 무료 정리: 브라우저에서 흑백·대비 처리 (AI 호출 없음 = 0원)
+  async function freshenImage(it: Item) {
+    const img = new window.Image();
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res();
+      img.onerror = () => rej(new Error("이미지 로드 실패"));
+      img.src = it.previewUrl;
+    });
+    const maxW = 1400;
+    const scale = Math.min(1, maxW / img.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = id.data;
+    const wp = 180, bp = 95; // 밝은 연필자국은 흰색으로, 인쇄 글씨는 남김
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      let v: number;
+      if (lum >= wp) v = 255;
+      else if (lum <= bp) v = Math.max(0, Math.round(lum * 0.6));
+      else v = Math.round(((lum - bp) / (wp - bp)) * 255);
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    ctx.putImageData(id, 0, 0);
+    patch(it.id, { cleanedDataUrl: canvas.toDataURL("image/png"), useCleaned: true });
+  }
+  async function freshenAll() {
+    for (const it of items) if (!it.cleanedDataUrl) await freshenImage(it);
+  }
+
   async function detectUnit(it: Item) {
     patch(it.id, { detecting: true });
     try {
@@ -205,9 +239,9 @@ export default function UploadPage() {
           <>
             <div className="row" style={{ justifyContent: "space-between", marginTop: 14, marginBottom: 8 }}>
               <span className="label" style={{ margin: 0 }}>추가된 사진 {items.length}장</span>
-              <div className="row" style={{ gap: 6 }}>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={detectAllUnits} disabled={items.some((i) => i.detecting)}>🔎 전체 단원 추천</button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={cleanAll} disabled={!anyCleanable || items.some((i) => i.cleaning)}>✨ 전체 낙서 지우기</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={freshenAll} disabled={!anyCleanable}>✨ 전체 또렷하게(무료)</button>
               </div>
             </div>
 
@@ -224,14 +258,20 @@ export default function UploadPage() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={it.cleanedDataUrl && it.useCleaned ? it.cleanedDataUrl : it.previewUrl} alt="" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 8, background: "var(--bg-soft)" }} />
                   {it.cleaning ? (
-                    <div className="muted" style={{ fontSize: 11, textAlign: "center", marginTop: 6 }}>지우는 중…</div>
+                    <div className="muted" style={{ fontSize: 11, textAlign: "center", marginTop: 6 }}>AI 지우는 중…</div>
                   ) : it.cleanedDataUrl ? (
-                    <label className="row" style={{ gap: 5, fontSize: 11, marginTop: 6, justifyContent: "center", cursor: "pointer" }}>
-                      <input type="checkbox" checked={it.useCleaned} onChange={(e) => patch(it.id, { useCleaned: e.target.checked })} />
-                      보정본 사용
-                    </label>
+                    <>
+                      <label className="row" style={{ gap: 5, fontSize: 11, marginTop: 6, justifyContent: "center", cursor: "pointer" }}>
+                        <input type="checkbox" checked={it.useCleaned} onChange={(e) => patch(it.id, { useCleaned: e.target.checked })} />
+                        정리본 사용
+                      </label>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", fontSize: 11 }} onClick={() => cleanOne(it)}>🤖 AI로 더 지우기</button>
+                    </>
                   ) : (
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", marginTop: 6, fontSize: 11 }} onClick={() => cleanOne(it)}>✨ 낙서 지우기</button>
+                    <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => freshenImage(it)}>✨ 또렷하게(무료)</button>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => cleanOne(it)}>🤖 AI 지우기</button>
+                    </div>
                   )}
                   {it.cleanError && <div style={{ fontSize: 10, color: "var(--danger-ink)", marginTop: 4 }}>{it.cleanError}</div>}
                   <input
