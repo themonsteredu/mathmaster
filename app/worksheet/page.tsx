@@ -10,6 +10,8 @@ function md(iso: string) {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+type Sheet = { student: string; rows: DBProblem[] };
+
 export default function WorksheetPage() {
   const [problems, setProblems] = useState<DBProblem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -17,6 +19,7 @@ export default function WorksheetPage() {
   const [until, setUntil] = useState(todayISO());
   const [who, setWho] = useState("전체");
   const [perPage, setPerPage] = useState<4 | 6>(4);
+  const [withAnswers, setWithAnswers] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [touched, setTouched] = useState(false);
 
@@ -52,13 +55,27 @@ export default function WorksheetPage() {
     });
   }
 
-  const chosen = due
-    .filter((p) => selected.has(p.id))
-    .sort((a, b) => (a.seq ?? 1e9) - (b.seq ?? 1e9));
-  const pages: DBProblem[][] = [];
-  for (let i = 0; i < chosen.length; i += perPage) pages.push(chosen.slice(i, i + perPage));
+  const chosen = due.filter((p) => selected.has(p.id));
 
-  // 칸 높이·사진 높이 고정 (A4 한 장에 맞게)
+  // 학생별로 묶고, 학생마다 번호순 정렬해 페이지로 나눔
+  const { sheets, answerStudents } = useMemo(() => {
+    const groups = new Map<string, DBProblem[]>();
+    chosen.forEach((p) => {
+      const a = groups.get(p.student_name) ?? [];
+      a.push(p);
+      groups.set(p.student_name, a);
+    });
+    const sh: Sheet[] = [];
+    const ans: { student: string; items: DBProblem[] }[] = [];
+    Array.from(groups.entries()).forEach(([student, ps]) => {
+      ps.sort((a, b) => (a.seq ?? 1e9) - (b.seq ?? 1e9));
+      for (let i = 0; i < ps.length; i += perPage) sh.push({ student, rows: ps.slice(i, i + perPage) });
+      if (ps.some((p) => p.answer && p.answer.trim())) ans.push({ student, items: ps });
+    });
+    return { sheets: sh, answerStudents: ans };
+  }, [chosen, perPage]);
+
+  const hasAnswers = answerStudents.length > 0;
   const cellH = perPage === 4 ? "112mm" : "73mm";
   const imgH = perPage === 4 ? "42mm" : "27mm";
 
@@ -68,10 +85,8 @@ export default function WorksheetPage() {
         <PageHeader
           eyebrow="시험지"
           title="오답 시험지 만들기"
-          sub="출제할 때가 된 오답(낙서 제거본)이 A4 2단으로 정리돼요. 인쇄하거나 PDF로 저장하세요."
-          actions={
-            <button className="btn btn-primary" onClick={() => window.print()} disabled={chosen.length === 0}>🖨️ 인쇄 / PDF 저장</button>
-          }
+          sub="학생별로 페이지가 나뉘고 각 시험지에 이름이 찍혀요. 인쇄하거나 PDF로 저장하세요."
+          actions={<button className="btn btn-primary" onClick={() => window.print()} disabled={chosen.length === 0}>🖨️ 인쇄 / PDF 저장</button>}
         />
 
         <div className="card" style={{ padding: 18, marginBottom: 16 }}>
@@ -96,6 +111,12 @@ export default function WorksheetPage() {
               ))}
             </div>
           )}
+          {hasAnswers && (
+            <label className="row" style={{ gap: 8, marginTop: 14, cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+              <input type="checkbox" checked={withAnswers} onChange={(e) => setWithAnswers(e.target.checked)} />
+              맨 뒤에 정답지도 함께 인쇄
+            </label>
+          )}
         </div>
 
         <div className="section-h"><h2>포함할 문항 ({chosen.length}/{due.length})</h2></div>
@@ -111,8 +132,8 @@ export default function WorksheetPage() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={problemImage(p)} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, background: "var(--bg-soft)" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{p.student_name}</div>
-                  <div className="muted" style={{ fontSize: 12 }}>{p.due_date ? `출제일 ${p.due_date}` : "출제 대기"}{p.attempts ? ` · ${p.attempts + 1}회차` : ""}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{p.seq != null ? `${p.seq}번 · ` : ""}{p.student_name}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{p.due_date ? `출제일 ${p.due_date}` : "출제 대기"}{p.attempts ? ` · ${p.attempts + 1}회차` : ""}{p.answer ? " · 정답 있음" : ""}</div>
                 </div>
               </label>
             ))}
@@ -124,19 +145,18 @@ export default function WorksheetPage() {
         </div>
       </div>
 
-      {pages.map((page, pi) => (
-        <div key={pi} className="ws-page">
+      {/* 학생별 시험지 페이지 */}
+      {sheets.map((sheet, si) => (
+        <div key={`s${si}`} className="ws-page">
           <div className="ws-head">
             <span className="t">오답 복습 시험지</span>
-            <span style={{ fontSize: 13, color: "#222", fontWeight: 700 }}>
-              이름 {who !== "전체" ? who : "__________"} &nbsp;/&nbsp; 날짜 ______
-            </span>
+            <span style={{ fontSize: 13, color: "#222", fontWeight: 700 }}>이름 {sheet.student} &nbsp;/&nbsp; 날짜 ______</span>
           </div>
           <div className="ws-grid">
-            {page.map((p, idx) => (
+            {sheet.rows.map((p, idx) => (
               <div key={p.id} className="ws-cell" style={{ height: cellH }}>
                 <div className="ws-cell-head">
-                  <span className="ws-no">{p.seq ?? pi * perPage + idx + 1}</span>
+                  <span className="ws-no">{p.seq ?? idx + 1}</span>
                   <span>오답일 {md(p.created_at)}</span>
                   <span style={{ marginLeft: "auto", color: "#aaa", fontWeight: 600 }}>{(p.attempts ?? 0) + 1}회차</span>
                 </div>
@@ -148,6 +168,25 @@ export default function WorksheetPage() {
           </div>
         </div>
       ))}
+
+      {/* 정답지 (맨 뒤) */}
+      {withAnswers &&
+        answerStudents.map((g, gi) => (
+          <div key={`a${gi}`} className="ws-page">
+            <div className="ws-head">
+              <span className="t">정답지</span>
+              <span style={{ fontSize: 13, color: "#222", fontWeight: 700 }}>{g.student}</span>
+            </div>
+            <div className="ans-list">
+              {g.items.map((p) => (
+                <div key={p.id} className="ans-item">
+                  <b>{p.seq ?? "-"}.</b>
+                  <span>{p.answer?.trim() || "—"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
     </>
   );
 }

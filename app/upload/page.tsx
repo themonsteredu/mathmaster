@@ -30,12 +30,20 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   return (await fetch(dataUrl)).blob();
 }
 
+const SYMS = ["√", "²", "³", "½", "⅓", "¼", "π", "±", "×", "÷", "≤", "≥", "≠", "°", "∠", "/"];
+
 export default function UploadPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [students, setStudents] = useState<string[]>([]);
   const [studentName, setStudentName] = useState("");
   const [typingName, setTypingName] = useState(false);
   const [targetCount, setTargetCount] = useState(5);
+  const [focusedAnswerId, setFocusedAnswerId] = useState<string | null>(null);
+
+  function insertSymbol(sym: string) {
+    if (!focusedAnswerId) return;
+    setItems((prev) => prev.map((i) => (i.id === focusedAnswerId ? { ...i, answer: i.answer + sym } : i)));
+  }
 
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
@@ -181,6 +189,14 @@ export default function UploadPage() {
                 ✨ 전체 낙서 지우기
               </button>
             </div>
+
+            {/* 수식 기호: 정답칸을 누른 뒤 탭하면 입력돼요 */}
+            <div className="sym-bar">
+              {SYMS.map((s) => (
+                <button key={s} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => insertSymbol(s)}>{s}</button>
+              ))}
+            </div>
+            <p className="muted" style={{ fontSize: 12, margin: "0 0 8px" }}>정답칸을 누른 뒤 기호를 탭하면 입력돼요. (분수는 1/2, 거듭제곱은 x², 루트는 √5 처럼)</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
               {items.map((it) => (
                 <div key={it.id} className="card" style={{ padding: 8 }}>
@@ -201,6 +217,7 @@ export default function UploadPage() {
                     className="input"
                     value={it.answer}
                     onChange={(e) => patch(it.id, { answer: e.target.value })}
+                    onFocus={() => setFocusedAnswerId(it.id)}
                     placeholder="정답 (채점용)"
                     style={{ marginTop: 6, padding: "7px 9px", fontSize: 12 }}
                   />

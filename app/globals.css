@@ -923,3 +923,42 @@ a {
     padding: 0 5px;
   }
 }
+
+/* ---------------- 정답지 ---------------- */
+.ans-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 22px;
+  margin-top: 10px;
+}
+.ans-item {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  padding: 5px 2px;
+  border-bottom: 1px dotted #d8d8d8;
+}
+.ans-item b {
+  min-width: 30px;
+}
+
+/* ---------------- 수식 기호 바 ---------------- */
+.sym-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0 2px;
+}
+.sym-bar button {
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sym-bar button:hover {
+  background: var(--bg-soft);
+}
