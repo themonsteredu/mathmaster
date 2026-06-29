@@ -59,6 +59,20 @@ export default function ReportPage() {
   });
   const units = Array.from(byUnit.entries()).sort((a, b) => b[1] - a[1]);
 
+  // 유형별 약점 집계 (이 학생의 오답을 type_code별로 — 많이 틀린 순)
+  const weakTypes = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; count: number }>();
+    problems
+      .filter((p) => p.student_name === who && p.created_at.slice(0, 10) >= since && p.type_code)
+      .forEach((p) => {
+        const key = p.type_code as string;
+        const cur = map.get(key) ?? { code: key, name: p.type_name || key, count: 0 };
+        cur.count++;
+        map.set(key, cur);
+      });
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [problems, who, since]);
+
   const periodLabel = period === "week" ? "최근 7일" : period === "month" ? "이번 달" : "전체 기간";
   const today = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
 
@@ -138,6 +152,34 @@ export default function ReportPage() {
                   {u} <span style={{ color: "var(--done-ink)" }}>×{n}</span>
                 </span>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* 유형별 약점 */}
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>🎯 자주 틀리는 유형 (집중 보완)</div>
+          {weakTypes.length === 0 ? (
+            <div style={{ color: "#999", fontSize: 13 }}>아직 유형이 기록된 오답이 없어요. (오답 등록 때 유형을 지정하면 여기에 쌓여요)</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {weakTypes.slice(0, 6).map((t, i) => {
+                const max = weakTypes[0].count || 1;
+                return (
+                  <div key={t.code} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, width: 16, color: "#bbb", textAlign: "right" }}>{i + 1}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                        <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
+                        <span style={{ color: "var(--accent-ink)", fontWeight: 800, flexShrink: 0, marginLeft: 8 }}>{t.count}회</span>
+                      </div>
+                      <div style={{ height: 8, background: "var(--bg-soft)", borderRadius: 999, marginTop: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${Math.round((t.count / max) * 100)}%`, background: "var(--accent)", borderRadius: 999 }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
