@@ -91,6 +91,7 @@ export default function UploadPage() {
   }, [studentName, studentGrades]);
 
   const segBtn = (on: boolean) => `btn btn-sm ${on ? "btn-primary" : "btn-secondary"}`;
+  const [classifyMsg, setClassifyMsg] = useState("");
 
   async function classifyOne(it: Item) {
     patch(it.id, { classifying: true });
@@ -99,18 +100,26 @@ export default function UploadPage() {
       const prefix = codePrefix(gradeSel, termSel);
       const res = await fetch("/api/classify-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data, mimeType, prefix, label: `${gradeSel} ${termSel}` }) });
       const j = await res.json();
-      const r = res.ok && j.results && j.results[0];
+      if (!res.ok) {
+        setClassifyMsg(`유형 추천 실패: ${j.error || "알 수 없는 오류"}`);
+        return;
+      }
+      const r = j.results && j.results[0];
       if (r) {
         const t = typeByCode(r.code);
         patch(it.id, { typeCode: r.code, typeName: r.name || t?.name, confidence: r.confidence, unit: t?.unit || it.unit });
+        setClassifyMsg("");
+      } else {
+        setClassifyMsg("이 사진에서 유형을 못 찾았어요. 학년·학기가 맞는지 확인하거나, 아래 목록에서 직접 골라 주세요.");
       }
-    } catch {
-      /* 무시 — 수동 선택 가능 */
+    } catch (e) {
+      setClassifyMsg(`유형 추천 중 오류: ${e instanceof Error ? e.message : "네트워크 문제"}`);
     } finally {
       patch(it.id, { classifying: false });
     }
   }
   async function classifyAll() {
+    setClassifyMsg("");
     for (const it of items) if (!it.typeCode) await classifyOne(it);
   }
   function setType(id: string, code: string) {
@@ -292,6 +301,12 @@ export default function UploadPage() {
                 <button type="button" className="btn btn-primary btn-sm" style={{ marginLeft: "auto" }} onClick={classifyAll} disabled={items.some((i) => i.classifying)}>🏷 전체 유형 추천</button>
               </div>
               <p className="muted" style={{ fontSize: 11, margin: "6px 0 0" }}>선행 중이면 실제 푸는 학년·학기로 바꿔 추천하세요(예: 초3이 초4 문제). 추천은 확인 후 저장돼요.</p>
+              {classifyMsg && (
+                <div className="alert alert-err" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+                  {classifyMsg}
+                  {classifyMsg.includes("ANTHROPIC") && <div style={{ marginTop: 4 }}>→ Vercel 환경변수에 <b>ANTHROPIC_API_KEY</b>를 추가하고 재배포하면 작동해요.</div>}
+                </div>
+              )}
             </div>
 
             <div className="row" style={{ justifyContent: "space-between", marginTop: 14, marginBottom: 8 }}>
