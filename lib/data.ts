@@ -5,6 +5,8 @@ export type DBProblem = {
   cleaned_image_url: string | null;
   subject: string | null;
   unit: string | null;
+  type_code: string | null; // 오답 유형 코드 (예: 4-2-1-03) — 약점 집계용
+  type_name: string | null; // 오답 유형명
   seq: number | null; // 학생별 고정 문항 번호 (삭제돼도 유지, 빈 번호 재사용)
   answer: string | null; // 정답 (채점용, 시험지엔 안 나옴)
   target_count: number; // 최대 반복(출제) 횟수

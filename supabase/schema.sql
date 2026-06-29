@@ -99,6 +99,14 @@ where w.id = r.id and w.seq is null;
 alter table wrong_problems add column if not exists answer text;
 
 -- ============================================================
+-- [추가] 오답 유형 자동 분류 (유형코드/유형명)
+-- "이 학생이 어떤 유형이 약한지" 집계하려면 type_code가 필요해요.
+-- 아래 두 줄을 SQL Editor에 붙여넣고 RUN 하세요.
+-- ============================================================
+alter table wrong_problems add column if not exists type_code text;
+alter table wrong_problems add column if not exists type_name text;
+
+-- ============================================================
 -- [추가] 학생 풀이 제출 시각 (디지털 풀이 업로드용)
 -- 아래 한 줄을 SQL Editor에 붙여넣고 RUN 하세요.
 -- ============================================================

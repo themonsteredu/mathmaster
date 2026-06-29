@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase, PHOTO_BUCKET } from "@/lib/supabase";
 import { nextDue } from "@/lib/data";
+import { GRADES, TERMS, codePrefix, typesFor, typeByCode } from "@/lib/mathTypeUtil";
 import { PageHeader } from "@/components/ui";
 import { IconCamera } from "@/components/icons";
 
@@ -18,6 +19,10 @@ type Item = {
   useCleaned: boolean;
   cleaning: boolean;
   cleanError?: string;
+  typeCode?: string;
+  typeName?: string;
+  confidence?: string;
+  classifying: boolean;
 };
 
 function fileToBase64(file: File): Promise<{ data: string; mimeType: string }> {
@@ -37,7 +42,10 @@ const SYMS = ["√", "²", "³", "½", "⅓", "¼", "π", "±", "×", "÷", "≤
 export default function UploadPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [students, setStudents] = useState<string[]>([]);
+  const [studentGrades, setStudentGrades] = useState<Record<string, string>>({});
   const [studentName, setStudentName] = useState("");
+  const [gradeSel, setGradeSel] = useState("초4");
+  const [termSel, setTermSel] = useState("1학기");
   const [typingName, setTypingName] = useState(false);
   const [targetCount, setTargetCount] = useState(5);
   const [focusedAnswerId, setFocusedAnswerId] = useState<string | null>(null);
@@ -54,7 +62,7 @@ export default function UploadPage() {
     const file = new File([blob], `crop-${crypto.randomUUID()}.png`, { type: "image/png" });
     setItems((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), file, previewUrl: dataUrl, answer: "", unit: "", detecting: false, useCleaned: false, cleaning: false },
+      { id: crypto.randomUUID(), file, previewUrl: dataUrl, answer: "", unit: "", detecting: false, useCleaned: false, cleaning: false, classifying: false },
     ]);
   }
 
@@ -68,12 +76,52 @@ export default function UploadPage() {
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   useEffect(() => {
-    supabase.from("students").select("name").order("name").then(({ data }) => setStudents((data ?? []).map((s) => s.name)));
+    supabase.from("students").select("name, grade").order("name").then(({ data }) => {
+      setStudents((data ?? []).map((s) => s.name));
+      const g: Record<string, string> = {};
+      (data ?? []).forEach((s) => { if (s.grade) g[s.name] = s.grade as string; });
+      setStudentGrades(g);
+    });
   }, []);
+
+  // 학생을 고르면 그 학생 학년을 기본값으로 (선행이면 아래서 바꾸면 됨)
+  useEffect(() => {
+    const g = studentGrades[studentName];
+    if (g && GRADES.includes(g)) setGradeSel(g);
+  }, [studentName, studentGrades]);
+
+  const segBtn = (on: boolean) => `btn btn-sm ${on ? "btn-primary" : "btn-secondary"}`;
+
+  async function classifyOne(it: Item) {
+    patch(it.id, { classifying: true });
+    try {
+      const { data, mimeType } = await fileToBase64(it.file);
+      const prefix = codePrefix(gradeSel, termSel);
+      const res = await fetch("/api/classify-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data, mimeType, prefix, label: `${gradeSel} ${termSel}` }) });
+      const j = await res.json();
+      const r = res.ok && j.results && j.results[0];
+      if (r) {
+        const t = typeByCode(r.code);
+        patch(it.id, { typeCode: r.code, typeName: r.name || t?.name, confidence: r.confidence, unit: t?.unit || it.unit });
+      }
+    } catch {
+      /* 무시 — 수동 선택 가능 */
+    } finally {
+      patch(it.id, { classifying: false });
+    }
+  }
+  async function classifyAll() {
+    for (const it of items) if (!it.typeCode) await classifyOne(it);
+  }
+  function setType(id: string, code: string) {
+    if (!code) return patch(id, { typeCode: undefined, typeName: undefined, confidence: undefined });
+    const t = typeByCode(code);
+    patch(id, { typeCode: code, typeName: t?.name, unit: t?.unit ?? "" });
+  }
 
   function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    const next = files.map((f) => ({ id: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), answer: "", unit: "", detecting: false, useCleaned: true, cleaning: false }));
+    const next = files.map((f) => ({ id: crypto.randomUUID(), file: f, previewUrl: URL.createObjectURL(f), answer: "", unit: "", detecting: false, useCleaned: true, cleaning: false, classifying: false }));
     setItems((prev) => [...prev, ...next]);
     e.target.value = "";
   }
@@ -167,6 +215,8 @@ export default function UploadPage() {
           seq: nextAvailable(),
           answer: it.answer.trim() || null,
           unit: it.unit.trim() || null,
+          type_code: it.typeCode || null,
+          type_name: it.typeName || null,
           target_count: targetCount,
           uploaded_by: "선생님",
           attempts: 0,
@@ -177,7 +227,7 @@ export default function UploadPage() {
 
       setProgress("저장 중…");
       let { error: insErr } = await supabase.from("wrong_problems").insert(rows);
-      if (insErr && /cleaned_image_url|attempts|due_date|column/.test(insErr.message || "")) {
+      if (insErr && /cleaned_image_url|attempts|due_date|type_code|type_name|column/.test(insErr.message || "")) {
         const base = rows.map((r) => ({
           student_name: r.student_name,
           problem_image_url: r.problem_image_url,
@@ -204,6 +254,8 @@ export default function UploadPage() {
   }
 
   const anyCleanable = items.some((i) => !i.cleanedDataUrl);
+  const curTypes = typesFor(gradeSel, termSel);
+  const typeUnits = Array.from(new Set(curTypes.map((t) => t.unit)));
 
   return (
     <>
@@ -226,6 +278,22 @@ export default function UploadPage() {
 
         {items.length > 0 && (
           <>
+            {/* 유형 분류 기준 (선행 가능 — 학생 학년과 달라도 됨) */}
+            <div className="card flat" style={{ padding: 12, marginTop: 14, background: "var(--bg-soft)" }}>
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="muted" style={{ fontSize: 12, fontWeight: 800, marginRight: 2 }}>유형 분류 기준</span>
+                {GRADES.map((g) => (
+                  <button key={g} type="button" className={segBtn(gradeSel === g)} onClick={() => setGradeSel(g)}>{g}</button>
+                ))}
+                <span style={{ width: 6 }} />
+                {TERMS.map((t) => (
+                  <button key={t} type="button" className={segBtn(termSel === t)} onClick={() => setTermSel(t)}>{t}</button>
+                ))}
+                <button type="button" className="btn btn-primary btn-sm" style={{ marginLeft: "auto" }} onClick={classifyAll} disabled={items.some((i) => i.classifying)}>🏷 전체 유형 추천</button>
+              </div>
+              <p className="muted" style={{ fontSize: 11, margin: "6px 0 0" }}>선행 중이면 실제 푸는 학년·학기로 바꿔 추천하세요(예: 초3이 초4 문제). 추천은 확인 후 저장돼요.</p>
+            </div>
+
             <div className="row" style={{ justifyContent: "space-between", marginTop: 14, marginBottom: 8 }}>
               <span className="label" style={{ margin: 0 }}>추가된 사진 {items.length}장</span>
               <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
@@ -277,6 +345,24 @@ export default function UploadPage() {
                     <input className="input" value={it.unit} onChange={(e) => patch(it.id, { unit: e.target.value })} placeholder="단원" style={{ padding: "7px 8px", fontSize: 12 }} />
                     <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: "7px 9px", flexShrink: 0 }} onClick={() => detectUnit(it)} disabled={it.detecting}>{it.detecting ? "…" : "🔎"}</button>
                   </div>
+                  {/* 오답 유형 (AI 추천 → 확인/수정) */}
+                  <div className="row" style={{ gap: 4, marginTop: 4 }}>
+                    <select className="select" value={it.typeCode ?? ""} onChange={(e) => setType(it.id, e.target.value)} style={{ padding: "7px 6px", fontSize: 11, flex: 1 }}>
+                      <option value="">유형 미지정</option>
+                      {it.typeCode && !curTypes.some((t) => t.code === it.typeCode) && (
+                        <option value={it.typeCode}>{it.typeCode} {it.typeName}</option>
+                      )}
+                      {typeUnits.map((u) => (
+                        <optgroup key={u} label={u}>
+                          {curTypes.filter((t) => t.unit === u).map((t) => (
+                            <option key={t.code} value={t.code}>{t.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: 11, padding: "7px 9px", flexShrink: 0 }} onClick={() => classifyOne(it)} disabled={it.classifying}>{it.classifying ? "…" : "🏷"}</button>
+                  </div>
+                  {it.typeCode && <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{it.typeCode}{it.confidence ? ` · 확신 ${it.confidence}` : ""}</div>}
                   <button type="button" className="btn btn-ghost btn-sm" style={{ width: "100%", color: "var(--danger-ink)", fontSize: 11 }} onClick={() => removeItem(it.id)}>삭제</button>
                 </div>
               ))}
