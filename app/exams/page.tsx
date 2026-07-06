@@ -252,26 +252,47 @@ export default function ExamsPage() {
     }
   }
 
-  // 직접 지우개(무료) — 사용자가 손으로 칠해서 지움
-  const [erase, setErase] = useState<{ src: string; page: number | null } | null>(null);
-  function openEraseImage() {
-    if (!previewUrl) return;
-    setErase({ src: cleanedDataUrl || previewUrl, page: null });
-  }
-  function openErasePage(i: number) {
-    setErase({ src: pageUseClean[i] ? pdfCleaned[i] : pdfOriginals[i], page: i });
-  }
-  function eraseDone(dataUrl: string) {
-    if (!erase) return;
-    if (erase.page == null) {
+  // 편집 결과(지운 이미지)를 원본 사진 / PDF 페이지에 반영
+  function applyEdited(page: number | null, dataUrl: string) {
+    if (page == null) {
       setCleanedDataUrl(dataUrl);
       setUseCleaned(true);
     } else {
-      const pg = erase.page;
-      setPdfCleaned((prev) => prev.map((c, k) => (k === pg ? dataUrl : c)));
-      setPageUseClean((prev) => prev.map((v, k) => (k === pg ? true : v)));
+      setPdfCleaned((prev) => prev.map((c, k) => (k === page ? dataUrl : c)));
+      setPageUseClean((prev) => prev.map((v, k) => (k === page ? true : v)));
     }
+  }
+  function currentSrc(page: number | null): string | null {
+    if (page == null) return cleanedDataUrl || previewUrl;
+    return pageUseClean[page] ? pdfCleaned[page] : pdfOriginals[page];
+  }
+
+  // 직접 지우개(무료) — 손으로 칠해서 지움
+  const [erase, setErase] = useState<{ src: string; page: number | null } | null>(null);
+  function openEraseImage() {
+    const s = currentSrc(null);
+    if (s) setErase({ src: s, page: null });
+  }
+  function openErasePage(i: number) {
+    setErase({ src: currentSrc(i)!, page: i });
+  }
+  function eraseDone(dataUrl: string) {
+    if (erase) applyEdited(erase.page, dataUrl);
     setErase(null);
+  }
+
+  // 연필 자국 지우기(무료) — 연한 회색만 하얗게, 인쇄 글자(검정)는 보존
+  const [cleanup, setCleanup] = useState<{ src: string; page: number | null } | null>(null);
+  function openCleanupImage() {
+    const s = currentSrc(null);
+    if (s) setCleanup({ src: s, page: null });
+  }
+  function openCleanupPage(i: number) {
+    setCleanup({ src: currentSrc(i)!, page: i });
+  }
+  function cleanupDone(dataUrl: string) {
+    if (cleanup) applyEdited(cleanup.page, dataUrl);
+    setCleanup(null);
   }
 
   // PDF를 직접 지우개로만 정리하려고 페이지 이미지로 변환 (AI 없이, 무료)
@@ -524,13 +545,16 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                     <button type="button" className="btn btn-ghost btn-sm" onClick={cleanImage} disabled={cleaning}>{cleaning ? "AI 지우는 중…" : cleanedDataUrl ? "🤖 다시 지우기" : "🤖 AI 낙서 지우기"}</button>
                   )}
                   {!fileIsPdf && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={openCleanupImage} disabled={cleaning}>🧽 연필 자국 지우기(무료)</button>
+                  )}
+                  {!fileIsPdf && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={openEraseImage} disabled={cleaning}>✏️ 직접 지우기(무료)</button>
                   )}
                   {fileIsPdf && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={cleanPdf} disabled={cleaning}>{cleaning ? progress || "처리 중…" : pdfCleaned.length ? "🤖 다시 지우기" : "🤖 PDF 낙서 지우기"}</button>
                   )}
                   {fileIsPdf && pdfCleaned.length === 0 && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={prepPdfManual} disabled={cleaning}>✏️ 직접 지우기(무료)</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={prepPdfManual} disabled={cleaning}>{cleaning ? progress || "여는 중…" : "🧽 무료로 지우기 (페이지 펼치기)"}</button>
                   )}
                   {((!fileIsPdf && cleanedDataUrl) || (fileIsPdf && pdfCleaned.length > 0)) && (
                     <label className="row" style={{ gap: 6, fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
@@ -541,7 +565,7 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                   <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.pdf" onChange={onPickFile} style={{ display: "none" }} />
                 </div>
                 {fileIsPdf && cleaning && progress && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>⏳ {progress}</div>}
-                {fileIsPdf && pdfCleaned.length === 0 && !cleaning && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>PDF의 낙서를 지우면 페이지마다 AI가 처리해요{pdfPages ? ` (총 ${pdfPages}페이지, 약 ${pdfPages * 55}원)` : ""}. 안 지우고 그대로 보관해도 돼요.</p>}
+                {fileIsPdf && pdfCleaned.length === 0 && !cleaning && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>💡 인쇄 시험지의 <b>연필 자국</b>은 <b>「🧽 무료로 지우기」</b>를 추천해요(문제는 안 지워지고 0원). AI 지우기는 낙서가 새까맣게 많을 때만{pdfPages ? ` (총 ${pdfPages}페이지, 약 ${pdfPages * 55}원, 문제까지 지워질 수 있음)` : ""}.</p>}
 
                 {/* PDF 페이지별 비교 — 너무 많이 지워진 페이지는 '원본'으로 되돌리기 */}
                 {fileIsPdf && pdfCleaned.length > 0 && useCleaned && (
@@ -571,8 +595,9 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
                               {opt("원본", pdfOriginals[i], !useClean, () => setPageUseClean((prev) => prev.map((v, k) => (k === i ? false : v))))}
                               {opt("지운 후", c, useClean, () => setPageUseClean((prev) => prev.map((v, k) => (k === i ? true : v))))}
                             </div>
-                            <div className="row" style={{ justifyContent: "center", marginTop: 6 }}>
-                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openErasePage(i)}>✏️ 이 페이지 직접 지우기(무료)</button>
+                            <div className="row" style={{ justifyContent: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openCleanupPage(i)}>🧽 연필 자국 지우기(무료)</button>
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openErasePage(i)}>✏️ 직접 지우기</button>
                             </div>
                           </div>
                         );
@@ -738,6 +763,9 @@ create policy "allow all - exam_papers" on exam_papers for all using (true) with
       {/* 직접 지우개 (무료, 브라우저에서 처리) */}
       {erase && <ManualEraseModal src={erase.src} onCancel={() => setErase(null)} onDone={eraseDone} />}
 
+      {/* 연필 자국 지우기 (무료, 밝기 조절) */}
+      {cleanup && <PencilCleanupModal src={cleanup.src} onCancel={() => setCleanup(null)} onDone={cleanupDone} />}
+
       {/* 저장 전 최종 확인 — 실제로 저장될 모습 그대로 */}
       {confirmImages && (
         <div className="no-print" onClick={() => setConfirmImages(null)} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(15,23,42,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -894,6 +922,98 @@ function ManualEraseModal({ src, onCancel, onDone }: { src: string; onCancel: ()
             style={{ width: "100%", height: "auto", borderRadius: 8, border: "1px solid var(--line)", cursor: "crosshair", background: "#fff" }}
           />
           {!ready && <div className="muted" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>불러오는 중…</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 연필 자국 지우기 — 밝기 기준값보다 '밝은(연한)' 픽셀만 하얗게, 진한 인쇄 글자는 보존.
+// 원리상 검정 인쇄 문제는 절대 안 지워져서 "과삭제"가 없음. (브라우저 처리, 0원)
+function PencilCleanupModal({ src, onCancel, onDone }: { src: string; onCancel: () => void; onDone: (dataUrl: string) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const baseRef = useRef<ImageData | null>(null);
+  const [ready, setReady] = useState(false);
+  const [level, setLevel] = useState(150); // 밝기 기준값(클수록 더 많이 지움)
+
+  function render(threshold: number) {
+    const c = canvasRef.current;
+    const base = baseRef.current;
+    if (!c || !base) return;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const out = ctx.createImageData(base.width, base.height);
+    const s = base.data;
+    const d = out.data;
+    for (let i = 0; i < s.length; i += 4) {
+      const lum = 0.299 * s[i] + 0.587 * s[i + 1] + 0.114 * s[i + 2];
+      if (lum >= threshold) {
+        d[i] = d[i + 1] = d[i + 2] = 255; // 연한 부분(연필·배경) → 흰색
+        d[i + 3] = 255;
+      } else {
+        d[i] = s[i]; d[i + 1] = s[i + 1]; d[i + 2] = s[i + 2]; d[i + 3] = 255; // 진한 부분(인쇄) → 그대로
+      }
+    }
+    ctx.putImageData(out, 0, 0);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let dataUrl = src;
+      if (!src.startsWith("data:")) {
+        const blob = await (await fetch(src)).blob();
+        dataUrl = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result as string);
+          r.onerror = rej;
+          r.readAsDataURL(blob);
+        });
+      }
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled) return;
+        const c = canvasRef.current;
+        if (!c) return;
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        const ctx = c.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        baseRef.current = ctx.getImageData(0, 0, c.width, c.height);
+        render(150);
+        setReady(true);
+      };
+      img.src = dataUrl;
+    })();
+    return () => { cancelled = true; };
+  }, [src]);
+
+  function onLevel(v: number) {
+    setLevel(v);
+    render(v);
+  }
+
+  return (
+    <div className="no-print" style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(15,23,42,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div className="card" style={{ padding: 16, maxWidth: 720, width: "100%", maxHeight: "94vh", overflow: "auto" }}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 800, fontSize: 15 }}>🧽 연필 자국 지우기 (무료)</span>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={onCancel}>취소</button>
+            <button className="btn btn-primary btn-sm" onClick={() => onDone(canvasRef.current!.toDataURL("image/png"))} disabled={!ready}>✅ 적용</button>
+          </div>
+        </div>
+        <div className="row" style={{ gap: 10, alignItems: "center", marginBottom: 8 }}>
+          <span className="muted" style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>지우는 정도</span>
+          <span className="muted" style={{ fontSize: 11 }}>약하게</span>
+          <input type="range" min={90} max={220} value={level} onChange={(e) => onLevel(Number(e.target.value))} style={{ flex: 1 }} />
+          <span className="muted" style={{ fontSize: 11 }}>강하게</span>
+        </div>
+        <p className="muted" style={{ fontSize: 12, margin: "0 0 10px" }}>슬라이더를 오른쪽으로 옮길수록 연필 자국이 더 많이 지워져요. <b>연한 글자까지 사라지기 직전</b>에서 멈추는 게 좋아요. (인쇄된 진한 문제는 안 지워져요)</p>
+        <div style={{ lineHeight: 0 }}>
+          <canvas ref={canvasRef} style={{ width: "100%", height: "auto", borderRadius: 8, border: "1px solid var(--line)", background: "#fff" }} />
+          {!ready && <div className="muted" style={{ marginTop: 8 }}>불러오는 중…</div>}
         </div>
       </div>
     </div>
